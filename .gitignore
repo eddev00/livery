@@ -1,0 +1,9 @@
+.tools/
+out/
+samples/*
+!samples/.gitkeep
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/fixtures/_build/
