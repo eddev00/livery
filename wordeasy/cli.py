@@ -51,7 +51,7 @@ def cmd_build(args: argparse.Namespace) -> int:
     opts = BuildOptions(
         theme=Path(args.theme).resolve(), out_root=Path(args.out).resolve(),
         accept_changes=args.accept_changes, clean=args.clean,
-        title=args.title, author=args.author, date=args.date, department=args.department,
+        title=args.title, department=args.department,
         number=args.number, version=args.version, department_name=args.department_name,
         cover=args.cover, original_pdf=not args.no_original_pdf, twins=not args.no_twins,
     )
@@ -121,7 +121,8 @@ def cmd_ui(args: argparse.Namespace) -> int:
     except ToolMissing as e:
         console.print(f"[red]{e}[/]")
         return EXIT_ERROR
-    return serve(out_root=Path(args.out).resolve(), port=args.port, open_browser=not args.no_browser)
+    return serve(out_root=Path(args.out).resolve(), port=args.port, open_browser=not args.no_browser,
+                 edge_cases_dir=Path(args.edge_cases_dir).resolve() if args.edge_cases_dir else None, push=args.push)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -135,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--keep-going", action="store_true", help="continue with the next file after a FAIL")
     b.add_argument("--clean", action="store_true", help="delete the document's output folder before building")
     b.add_argument("--accept-changes", action="store_true", help="accept tracked changes instead of failing")
-    b.add_argument("--title"), b.add_argument("--author"), b.add_argument("--date")
+    b.add_argument("--title", help="document title (default from the Word metadata, then the file name)")
     b.add_argument("--department", help="bold prefix before the title in the footer (default from theme [document])")
     b.add_argument("--number", help="big number on the cover page (default from theme [cover])")
     b.add_argument("--cover", help="cover variant, one of the [cover.variants.*] names in the theme (default from theme [cover])")
@@ -159,6 +160,8 @@ def main(argv: list[str] | None = None) -> int:
     u.add_argument("--out", default=str(REPO_ROOT / "out"), help="output root to build into and browse (default: ./out)")
     u.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (default: a free random port)")
     u.add_argument("--no-browser", action="store_true", help="print the URL instead of opening a browser")
+    u.add_argument("--edge-cases-dir", default=None, help="where \"Add to edge cases\" copies a lorem twin (default: tests/fixtures/edge-cases in this checkout)")
+    u.add_argument("--push", action="store_true", help="after committing an edge case, push it to origin/edge-cases (the only outbound network call the UI ever makes)")
     u.set_defaults(func=cmd_ui)
 
     args = p.parse_args(argv)

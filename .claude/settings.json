@@ -4,8 +4,18 @@
       "Read(out/**)",
       "Edit(out/**)",
       "Write(out/**)",
-      "Read(/absolute/path/to/real/inputs/**)",
-      "Read(/absolute/path/to/real/out/**)"
-    ]
+      "Read(~/wordeasy-live/**)",
+      "Edit(~/wordeasy-live/**)",
+      "Write(~/wordeasy-live/**)",
+      "Bash(*wordeasy-live*)"
+    ],
+    "blockReadsOutsideWorkingDirectories": true
+  },
+  "sandbox": {
+    "enabled": true,
+    "filesystem": {
+      "denyRead": ["~/wordeasy-live", "out"],
+      "allowRead": ["~/.local/share/uv", "~/.cache/uv", "~/.local/share/mise", "~/.local/bin"]
+    }
   }
 }

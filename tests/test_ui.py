@@ -138,7 +138,7 @@ def test_build_job_and_reverify(client, tmp_path):
     # cover/metadata edits regenerate main.typ and rebuild
     twin_main_before = (tmp_path / "features" / "lorem" / "main.typ").read_text(encoding="utf-8")
     c = client.post(f"/api/docs/{doc_id}/cover", json={"department_name": "Annual report", "version": "V2", "title": "", "cover": "small",
-                                                       "author": "", "date": "", "department": ""})
+                                                       "department": ""})
     assert c.status_code == 200
     job_c = _wait(client, c.json()["id"])
     assert job_c["docs"][0]["status"] == "PASS"
@@ -235,3 +235,62 @@ def test_quit_sets_should_exit(client):
     client.app.state.server = fake
     assert client.post("/api/quit").json() == {"ok": True}
     assert fake.should_exit is True
+
+
+def test_edge_case_forwarding(built_features, tmp_path):
+    """The Lorem tab's "Add to edge cases": one twin file plus a note, committed alone, pushed on request."""
+    import subprocess
+
+    from wordeasy.edge_cases import is_twin_docx
+    from wordeasy.ui.server import Registry
+
+    def git(repo, *a):
+        return subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True, check=True).stdout
+
+    _, out_dir = built_features
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    for k, v in (("user.email", "live@example.com"), ("user.name", "live side"), ("commit.gpgsign", "false")):
+        git(repo, "config", k, v)
+    (repo / "README.md").write_text("code\n")
+    (repo / "unrelated.txt").write_text("staged but must not be committed\n")
+    git(repo, "add", "README.md"); git(repo, "commit", "-q", "-m", "init"); git(repo, "add", "unrelated.txt")
+    git(repo, "remote", "add", "origin", str(remote))
+    dest = repo / "tests" / "fixtures" / "edge-cases"
+
+    app = create_app(token=TOKEN, out_root=out_dir.parent, hosts={HOST, "localhost:5555"}, edge_cases_dir=dest, push=True)
+    with TestClient(app, base_url=f"http://{HOST}") as c:
+        _login(c)
+        ec = c.get("/api/state").json()["edge_cases"]
+        assert ec["push"] is True and ec["branch"] == "edge-cases" and ec["default_slug"].startswith("case-") and ec["dir"] == str(dest)
+        doc_id = Registry.id_for(out_dir)
+        url = f"/api/docs/{doc_id}/edge-case"
+        assert c.post(url, json=["nope"]).status_code == 400
+        r = c.post(url, json={"slug": "Bad Slug!", "note": ""})
+        assert r.status_code == 400 and "slug" in r.json()["error"]
+        r = c.post(url, json={"slug": "features-table", "note": ""})  # named after the source document
+        assert r.status_code == 400 and "features" in r.json()["error"]
+        r = c.post(url, json={"slug": "table-lost", "note": "see features.docx, page 3"})
+        assert r.status_code == 400 and "note" in r.json()["error"]
+        assert not dest.exists()
+
+        r = c.post(url, json={"slug": "Table-Lost", "note": "header row of the second table is dropped on page 3"})
+        assert r.status_code == 200, r.text
+        j = r.json()
+        assert j["slug"] == "table-lost" and j["committed"] and j["pushed"] and j["branch"] == "edge-cases", j
+        assert is_twin_docx(dest / "table-lost.docx")
+        md = (dest / "table-lost.md").read_text(encoding="utf-8")
+        assert "header row of the second table" in md and "Twin build:" in md and "Feature Coverage" not in md
+        # exactly the two files went into the commit; the unrelated staged file stayed out
+        assert sorted(git(repo, "show", "--name-only", "--format=", "HEAD").split()) == \
+            ["tests/fixtures/edge-cases/table-lost.docx", "tests/fixtures/edge-cases/table-lost.md"]
+        assert "Edge case: table-lost" in git(repo, "log", "-1", "--format=%s")
+        assert git(remote, "rev-parse", "edge-cases").strip() == git(repo, "rev-parse", "HEAD").strip()
+        assert c.get(f"/api/docs/{doc_id}").json()["state"]["edge_case"] == "table-lost"
+        r = c.post(url, json={"slug": "another", "note": ""})
+        assert r.status_code == 409 and "table-lost" in r.json()["error"]
+        assert c.post(url, json={"slug": "x", "note": ""}, headers={"Origin": "http://evil.example"}).status_code == 403
+
+    assert not is_twin_docx(FIXTURES / "features.docx")
