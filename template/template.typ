@@ -3,6 +3,7 @@
 //
 // sys.inputs understood:
 //   theme  = root-relative path to a theme.toml (default: the one beside this file)
+//   cover  = name of a [cover.variants.*] table in the theme; overrides [cover].variant
 //   verify = "true" to produce the bare render used by the content verifier:
 //            no cover, no TOC, no header/footer, no chapter pages, no numbering,
 //            hyphenation/ligatures off, wide word spacing (pdftotext must never
@@ -26,7 +27,7 @@
   department_name: none,
   version: none,
   number: none,
-  label: none,
+  cover: none,
   body,
 ) = {
   let t = load-theme()
@@ -386,9 +387,19 @@
 
   // ------------------------------------------------------------------- cover
   if not verify and t.cover.enabled {
-    let cv = t.cover
+    // A variant table ([cover.variants.<name>]) overrides the [cover] keys.
+    // Precedence: the `cover:` argument (main.typ), then the `cover` input, then the theme default.
+    let variants = t.cover.at("variants", default: (:))
+    let variant = if cover != none { cover } else { sys.inputs.at("cover", default: t.cover.at("variant", default: "")) }
+    let cv = if variant == "" { t.cover } else {
+      if variant not in variants {
+        panic("unknown cover variant \"" + variant + "\"; the theme defines: " + variants.keys().join(", "))
+      }
+      t.cover + variants.at(variant)
+    }
     let cover-number = if number == none { cv.at("number", default: "") } else { number }
-    let cover-label = if label == none { cv.at("label", default: "") } else { label }
+    // The department name doubles as the label above the title (one variable).
+    let cover-label = dept-name
     page(
       header: none,
       footer: if cv.at("footer", default: false) and t.page.page_numbers { footer-at(0pt, 0pt, footer-content) } else { none },
@@ -403,14 +414,33 @@
       #if cv.logo != "" {
         place(top + left, dx: 2.5cm, dy: 2cm, image(cv.logo, height: 2cm))
       }
+      // A cover text style read from [cover] keys <prefix>_font/_size/_weight/_line_height/_uppercase/_color.
+      // `edges` clips the text box (top-edge/bottom-edge) so gaps are measured from the ink.
+      #let cover-text(prefix, s, default-color: "#B3B3B3", edges: (:)) = {
+        let k(name, default) = cv.at(prefix + "_" + name, default: default)
+        let size = _len(k("size", "14pt"))
+        // line height as an absolute value: leading = line height - font size
+        let line = if prefix + "_line_height" in cv { _len(k("line_height", "")) } else { size * 1.2 }
+        set par(leading: line - size)
+        text(
+          font: k("font", t.fonts.heading),
+          size: size,
+          weight: _weight(k("weight", "bold")),
+          fill: _color(t, k("color", default-color)),
+          hyphenate: false,
+          ..edges,
+          if k("uppercase", false) { upper(s) } else { s },
+        )
+      }
       #place(top + left, dx: _len(cv.title_left), dy: eval(cv.title_top), block(width: eval(cv.title_width))[
         #set text(font: t.fonts.heading, fill: _color(t, cv.title_color), hyphenate: false)
-        #set par(justify: false)
-        #if cover-label != "" {
-          text(size: _len(cv.at("label_size", default: "16pt")), fill: _color(t, cv.at("label_color", default: cv.title_color)), cover-label)
-          v(0.3em)
-        }
-        #text(size: _len(cv.title_size), weight: "bold", title)
+        #set par(justify: false, spacing: 0pt)
+        // The label (= department name) shares the department-name style ([cover] dept_text_*); label_gap is ink to ink.
+        #let label-block = if cover-label != "" {
+          cover-text("dept_text", cover-label, default-color: cv.title_color, edges: (bottom-edge: "baseline"))
+        } else { none }
+        #let title-block = cover-text("title", title, default-color: "#FFFFFF", edges: (top-edge: "cap-height"))
+        #stack(dir: ttb, spacing: _len(cv.at("label_gap", default: "0.3em")), ..(label-block, title-block).filter(x => x != none))
         #if cv.subtitle != "" { v(0.4em); text(size: 16pt, cv.subtitle) }
         #if author != "" or date != "" { v(0.8em) }
         #if author != "" { text(size: 13pt, author); linebreak() }
@@ -421,15 +451,29 @@
           dx: _len(cv.at("dept_left", default: t.page.margin_left)),
           dy: -_len(cv.at("dept_bottom", default: t.page.margin_bottom)), block[
           #set text(font: t.fonts.heading, fill: _color(t, cv.at("dept_color", default: "#B3B3B3")), weight: "bold")
-          #set par(leading: 0.4em)
-          #if dept != "" { text(size: _len(cv.at("dept_symbol_size", default: "50pt")), dept); v(0.3em) }
-          #grid(
+          #set par(leading: 0.4em, spacing: 0pt)
+          #let symbol = if dept != "" {
+            text(
+              font: cv.at("dept_symbol_font", default: t.fonts.heading),
+              weight: _weight(cv.at("dept_symbol_weight", default: "bold")),
+              stretch: eval(cv.at("dept_symbol_stretch", default: "100%")),
+              size: _len(cv.at("dept_symbol_size", default: "50pt")),
+              fill: _color(t, cv.at("dept_symbol_color", default: cv.at("dept_color", default: "#B3B3B3"))),
+              // box the symbol from baseline to cap height so dept_symbol_gap is measured from its ink
+              top-edge: "cap-height", bottom-edge: "baseline",
+              dept,
+            )
+          } else { none }
+          #let dept-text(s) = cover-text("dept_text", s, edges: (top-edge: "cap-height"))
+          #let names = grid(
             columns: (_len(cv.at("dept_name_width", default: "3.15cm")), auto),
             column-gutter: _len(cv.at("dept_gap", default: "1cm")),
             align: (left + bottom, left + bottom),
-            text(size: _len(cv.at("dept_text_size", default: "14pt")), dept-name),
-            text(size: _len(cv.at("dept_text_size", default: "14pt")), doc-version),
+            dept-text(dept-name),
+            dept-text(doc-version),
           )
+          // A stack keeps dept_symbol_gap exact: no paragraph spacing sneaks in between.
+          #stack(dir: ttb, spacing: _len(cv.at("dept_symbol_gap", default: "0.3em")), ..(symbol, names).filter(x => x != none))
         ])
       }
       #if cover-number != "" {
@@ -441,13 +485,18 @@
           dx: -_len(cv.number_inset_right) + rsb,
           dy: -_len(cv.number_inset_bottom),
           // A tight box is the gradient's reference frame: text gradients must be
-          // relative to the parent, and 270deg runs bottom-to-top in Typst.
+          // relative to the parent. The angle follows Typst's convention (0deg
+          // left-to-right, 90deg top-to-bottom), so 225deg runs bottom-right to top-left.
           box(text(
             font: cv.number_font,
             weight: _weight(cv.number_weight),
             stretch: eval(cv.number_stretch),
             size: _len(cv.number_size),
-            fill: gradient.linear(angle: 270deg, _color(t, cv.number_color_bottom), _color(t, cv.number_color_top), relative: "parent"),
+            fill: gradient.linear(
+              angle: eval(cv.at("number_gradient_angle", default: "225deg")),
+              _color(t, cv.number_color_start), _color(t, cv.number_color_end),
+              relative: "parent",
+            ),
             cover-number,
           )),
         )

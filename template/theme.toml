@@ -3,7 +3,7 @@
 
 [document]
 department = "IT"              # department symbol: bold prefix in the footer and the big label on the cover; --department per build
-department_name = "Information Technology"   # full name shown under the symbol on the cover; --department-name per build
+department_name = "Information Technology"   # full name: label above the title and under the symbol on the cover; --department-name per build
 version = ""                   # e.g. "V1, MAR 2026"; asked per document at build time (--version)
 
 [page]
@@ -172,37 +172,64 @@ max_width = "100%"
 
 [cover]
 enabled = true
-background = "assets/document-cover.png"   # full-bleed image, path relative to the template folder ("" for none)
-background_bleed = "2%"        # the image is drawn this much larger than the page and centred, so soft image edges never show
+variant = "small"              # default cover variant: a [cover.variants.<name>] table below; chosen per document (--cover, or in the UI)
+background = ""                # full-bleed image, path relative to the template folder ("" for none); variants set their own
+background_bleed = "2.86%"     # the image is drawn this much larger than the page and centred, so soft image edges never show
+                               # 2.86% of the A4 width = 6mm, i.e. a 3mm bleed on the left and right (4.2mm top and bottom)
 logo = ""                      # path relative to the template folder, e.g. "assets/logo.png"
-label = ""                     # short label above the title in the red band, e.g. "Q3 report"; asked per document at build time
-label_size = "16pt"
-label_color = "#FFFFFF"
+# The label above the title in the red band is the department name ([document]
+# department_name, --department-name per build); it uses the dept_text_* style below.
+label_gap = "0.67cm"           # distance from the label's baseline to the top of the title's capitals
 subtitle = ""
-title_color = "#FFFFFF"
-title_size = "34pt"
-title_top = "38%"              # top of the title block, as a share of the page height (the red band)
-title_left = "1.75cm"
+title_font = "Dubai"
+title_size = "28pt"
+title_line_height = "38pt"
+title_weight = "bold"
+title_color = "#FFFFFFCC"      # white at 80% opacity
+title_top = "40%"              # top of the title block, as a share of the page height (the red band)
+title_left = "1.68cm"
 title_width = "70%"
 number = "01"                  # the big number in the bottom-right corner; override per build with --number
 number_font = "29LT Bukra"     # 29LT Bukra Condensed SemiBold (template/assets/fonts/29LTBukraCd-SmBd.otf)
 number_weight = 600
 number_stretch = "75%"
-number_size = "370pt"
-number_color_bottom = "#FFFFFF80"   # vertical gradient: bottom stop (white at 50%) ...
-number_color_top = "#FFFFFF0D"      # ... to top stop (white at 5%); set both to the same value for a flat colour
+number_size = "388pt"
+number_color_start = "#FFFFFF99"   # gradient start stop (white at 60%) ...
+number_color_end = "#ffffff0f"     # ... to end stop (white at 2%); set both to the same value for a flat colour
+number_gradient_angle = "250deg"   # direction of the gradient: 300deg runs from the bottom-left toward the top-right, steeper than the diagonal
+                                   # (0deg left->right, 90deg top->bottom, 180deg right->left, 270deg bottom->top)
 number_inset_right = "0cm"       # distance from the page's right edge to the ink of the last digit
-number_inset_bottom = "-20pt"    # 20px at 96 dpi; negative pushes the number below the page edge
+number_inset_bottom = "-1.4cm"    # 20px at 96 dpi; negative pushes the number below the page edge
 footer = false                 # the big number occupies the corner where the page number would go
 # Department block, bottom-left inside the page margins: symbol on one line,
 # then department name (wrapping in a fixed-width column) with the version beside it.
-dept_left = "1.75cm"           # distance of the department block from the left page edge
-dept_bottom = "1.75cm"         # distance from the bottom page edge
-dept_symbol_size = "50pt"
-dept_text_size = "14pt"
+dept_left = "1.7cm"           # distance of the department block from the left page edge
+dept_bottom = "2.3cm"         # distance from the bottom page edge
+dept_symbol_size = "78pt"
+dept_symbol_font = "29LT Bukra"    # 29LT Bukra Condensed SemiBold (no Condensed Bold file exists; 600 at 75% is the heaviest condensed weight)
+dept_symbol_weight = 600
+dept_symbol_stretch = "75%"
+dept_symbol_gap = "1cm"          # space between the symbol and the department name below it
+dept_text_size = "14pt"          # department name and version
+dept_text_line_height = "21pt"
+dept_text_font = "Dubai"
+dept_text_weight = "bold"
+dept_text_uppercase = true
+dept_text_color = "#FFFFFF66"    # white at 40% opacity (defaults to dept_color)
 dept_name_width = "3.15cm"
 dept_gap = "1cm"               # space between the department name column and the version
 dept_color = "#B3B3B3"
+dept_symbol_color = "#FFFFFF66"   # the symbol only: white at 40% opacity (defaults to dept_color)
+
+# Cover variants: each table overrides any [cover] key above for documents built
+# with that variant. `description` is shown next to the name when choosing.
+[cover.variants.small]
+description = "short red band"
+background = "assets/cover-small.png"
+
+[cover.variants.large]
+description = "tall red band, room for a longer title"
+background = "assets/cover-large.png"
 
 # Right side bearing of each digit in the number font, in em (from the font's
 # metrics). The template shifts the number right by the bearing of its last

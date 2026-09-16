@@ -15,6 +15,7 @@ wordeasy = "wordeasy.cli:main"
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.13.0",
     "pytest>=8",
     "python-docx>=1.1",
 ]

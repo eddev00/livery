@@ -49,26 +49,44 @@ class ConvertResult:
     outline_stripped: int = 0
 
 
-def preflight(path: Path, work_dir: Path) -> tuple[Path, str | None]:
-    """Return a .docx path, converting legacy formats with LibreOffice."""
-    if path.suffix.lower() == ".docx":
-        return path, None
-    if path.suffix.lower() not in CONVERTIBLE:
-        raise ValueError(f"unsupported input format: {path.suffix} ({path})")
-    soffice = find_tool("soffice") or find_tool("libreoffice")
+def find_soffice() -> Path | None:
+    return find_tool("soffice") or find_tool("libreoffice")
+
+
+def _soffice_convert(path: Path, work_dir: Path, target: str) -> Path:
+    """Run LibreOffice headless: convert `path` to `target` (a filter name such as docx or pdf) into work_dir."""
+    soffice = find_soffice()
     if soffice is None:
-        raise RuntimeError(f"{path.name}: LibreOffice (soffice) is required to convert {path.suffix} to .docx")
+        raise RuntimeError(f"{path.name}: LibreOffice (soffice) is required to convert {path.suffix} to .{target}")
     work_dir.mkdir(parents=True, exist_ok=True)
     # A private profile: otherwise the request is handed to an already running
     # LibreOffice GUI (e.g. with the same file open) and silently produces nothing.
     profile = work_dir / "lo-profile"
     profile.mkdir(exist_ok=True)
     run([soffice, f"-env:UserInstallation={profile.resolve().as_uri()}", "--headless",
-         "--convert-to", "docx", "--outdir", work_dir, path])
-    out = work_dir / (path.stem + ".docx")
+         "--convert-to", target, "--outdir", work_dir, path])
+    out = work_dir / (path.stem + "." + target)
     if not out.exists():
         raise RuntimeError(f"{path.name}: LibreOffice conversion produced no file")
-    return out, path.suffix.lower()
+    return out
+
+
+def preflight(path: Path, work_dir: Path) -> tuple[Path, str | None]:
+    """Return a .docx path, converting legacy formats with LibreOffice."""
+    if path.suffix.lower() == ".docx":
+        return path, None
+    if path.suffix.lower() not in CONVERTIBLE:
+        raise ValueError(f"unsupported input format: {path.suffix} ({path})")
+    return _soffice_convert(path, work_dir, "docx"), path.suffix.lower()
+
+
+def office_pdf(path: Path, pdf: Path, work_dir: Path) -> Path:
+    """Render a Word file to PDF with LibreOffice, as it would look in Word: the "original" side
+    of the UI's comparison views. Raises RuntimeError when LibreOffice is missing."""
+    out = _soffice_convert(path, work_dir, "pdf")
+    pdf.parent.mkdir(parents=True, exist_ok=True)
+    out.replace(pdf)
+    return pdf
 
 
 def _header_footer_text(docx: Path) -> list[str]:

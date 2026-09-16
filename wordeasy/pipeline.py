@@ -2,28 +2,43 @@
 
 `build_document` and `verify_document` each return the report dict that was written to
 `report.json`. They report progress through an optional callback and never print.
+
+One build of `<doc>.docx` produces, under `out/<doc>/`:
+
+    <doc>.pdf        the styled PDF (Typst)
+    original.pdf     the Word file as LibreOffice renders it (the "Live" comparison's left side)
+    lorem/           the lorem-ipsum twin: an anonymised copy of the Word file (lorem.docx),
+                     its own LibreOffice render (lorem/original.pdf) and its own styled build
+                     (lorem/lorem.pdf), verified to contain no word of the original
 """
 from __future__ import annotations
 
 import json
 import shutil
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from random import Random
 from typing import Any, Callable
 
 from . import pandoc_ast as past
 from . import verify as V
-from .convert import DEFAULT_THEME, convert, load_theme, read_typst_ast
-from .render import compile_pdf, compute_root, relocate_main, template_import_path, write_main
+from .anonymize import AnonymizeError, anonymize_docx, leaked_into_text, lorem_like, original_word_set, verify_anonymized
+from .convert import DEFAULT_THEME, convert, find_soffice, load_theme, office_pdf, preflight, read_typst_ast
+from .render import compile_pdf, compute_root, relocate_main, root_relative, template_import_path, write_main
 from .report import build_report, write_report
 from .tools import REPO_ROOT, tool_versions
 
 STATE_FILE = "wordeasy.json"
+ORIGINAL_PDF = "original.pdf"
+TWIN_DIR = "lorem"           # the twin lives in out/<doc>/lorem/, its Word file is lorem/lorem.docx
 REQUIRED_TOOLS = ("pandoc", "typst", "pdftotext", "pdfimages", "pdffonts")
-COVER_FIELDS = ("label", "title", "number", "version")
+# Cover answers remembered from one build of the same document to the next. The department
+# name is one variable: it is the label above the title and the name under the symbol.
+COVER_FIELDS = ("title", "number", "version", "cover", "department_name")
 
 Progress = Callable[[str, str], None]
-"""progress(stage, message): stage is one of converting, cover, rendering, checking, reporting."""
+"""progress(stage, message): stage is one of converting, cover, rendering, checking, original, anonymizing, reporting."""
 
 CoverAsker = Callable[[Path, dict[str, str]], dict[str, str]]
 """ask(source, proposed) -> answers; lets the CLI prompt on a terminal."""
@@ -38,11 +53,13 @@ class BuildOptions:
     title: str | None = None
     author: str | None = None
     date: str | None = None
-    department: str | None = None
+    department: str | None = None       # short symbol ("IT"): footer prefix and big glyph on the cover
     number: str | None = None
-    label: str | None = None
     version: str | None = None
-    department_name: str | None = None
+    department_name: str | None = None  # full name: label above the title and under the symbol
+    cover: str | None = None            # name of a [cover.variants.*] table in the theme
+    original_pdf: bool = True           # render the Word file with LibreOffice next to the styled PDF
+    twins: bool = True                  # build the lorem-ipsum twin (original + generated) under lorem/
 
 
 def out_dir_for(source: Path, out_root: Path) -> Path:
@@ -63,16 +80,51 @@ def read_state(out_dir: Path) -> dict[str, Any] | None:
         return None
 
 
+def _write_state(out_dir: Path, state: dict[str, Any]) -> None:
+    (out_dir / STATE_FILE).write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def twin_dir_for(out_dir: Path) -> Path:
+    return out_dir / TWIN_DIR
+
+
+def cover_variants(theme: dict[str, Any]) -> list[dict[str, str]]:
+    """The cover variants a theme defines ([cover.variants.<name>]), as name + description."""
+    variants = theme.get("cover", {}).get("variants", {})
+    return [{"name": name, "description": str(v.get("description", ""))} for name, v in variants.items()]
+
+
+def check_cover_variant(theme: dict[str, Any], name: str) -> str:
+    """Return `name` if the theme defines it (or it is empty: theme default); raise ValueError otherwise."""
+    names = [v["name"] for v in cover_variants(theme)]
+    if name and name not in names:
+        known = ", ".join(names) if names else "none"
+        raise ValueError(f"unknown cover variant {name!r}; the theme defines: {known}")
+    return name
+
+
 def default_cover(previous: dict[str, str], theme: dict[str, Any], opts: BuildOptions) -> dict[str, str]:
     """Command-line values win, then the previous build's answers, then the theme defaults."""
     cover = theme.get("cover", {})
     doc = theme.get("document", {})
+    # builds made before the label and the department name were merged stored the label separately
+    prev_name = previous.get("department_name") or previous.get("label", "")
     return {
-        "label": opts.label if opts.label is not None else previous.get("label", cover.get("label", "")),
         "title": opts.title if opts.title is not None else previous.get("title", ""),
         "number": opts.number if opts.number is not None else previous.get("number", cover.get("number", "")),
         "version": opts.version if opts.version is not None else previous.get("version", doc.get("version", "")),
+        "cover": opts.cover if opts.cover is not None else previous.get("cover", cover.get("variant", "")),
+        "department_name": opts.department_name if opts.department_name is not None
+        else prev_name or doc.get("department_name", ""),
     }
+
+
+def _write_main_from_state(out_dir: Path, state: dict[str, Any]) -> None:
+    theme_path = Path(state["theme"])
+    write_main(out_dir, title=state["title"], author=state.get("author") or "", date=state.get("date") or "",
+               root=compute_root(out_dir, theme_path), department=state.get("department"),
+               number=state.get("number") or None, department_name=state.get("department_name") or None,
+               version=state.get("version") or None, cover=state.get("cover") or None)
 
 
 def _render_and_verify(out_dir: Path, state: dict[str, Any], source_text: str, source_struct: past.Structure,
@@ -112,17 +164,47 @@ def _render_and_verify(out_dir: Path, state: dict[str, Any], source_text: str, s
     checks.append(V.check_images(expected_images, pdf))
     theme = load_theme(theme_path)
     theme_fonts = [theme["fonts"]["body"], theme["fonts"]["heading"], theme["fonts"]["mono"],
-                   theme.get("cover", {}).get("number_font", "")]
+                   theme.get("cover", {}).get("number_font", ""),
+                   theme.get("cover", {}).get("dept_symbol_font", "")]
     checks.append(V.check_fonts(pdf, styled.warnings, theme_fonts))
     checks.append(V.check_typst_warnings(styled.warnings))
     return checks, pdf, extra
+
+
+def _render_original(source: Path, out_dir: Path, progress: Progress) -> V.CheckResult:
+    """original.pdf: the Word file as LibreOffice shows it. Missing LibreOffice is a WARN, not an error."""
+    progress("original", "rendering the Word file with LibreOffice")
+    if find_soffice() is None:
+        return V.CheckResult("original_pdf", V.WARN,
+                             "LibreOffice (soffice) not found: no original.pdf, the Live view has no left side")
+    try:
+        office_pdf(source, out_dir / ORIGINAL_PDF, out_dir / "_preflight")
+    except Exception as e:  # noqa: BLE001
+        return V.CheckResult("original_pdf", V.WARN, "LibreOffice could not render the Word file", details=[str(e)])
+    return V.CheckResult("original_pdf", V.PASS, f"{ORIGINAL_PDF} rendered with LibreOffice")
+
+
+def _twin_check(twin_report: dict[str, Any] | None, twin_state: dict[str, Any] | None,
+                error: str | None) -> V.CheckResult:
+    if error is not None:
+        return V.CheckResult("lorem_twin", V.WARN, "lorem ipsum twin refused: " + error.splitlines()[0],
+                             details=error.splitlines()[1:6])
+    st = (twin_state or {}).get("anonymize_stats", {})
+    twin_status = (twin_report or {}).get("status", "?")
+    summary = (f"{TWIN_DIR}/: {st.get('original_words', '?')} distinct words replaced, "
+               f"{st.get('placeholders', '?')} image(s) turned into placeholders, {st.get('dropped_parts', 0)} data part(s) "
+               f"removed; no original word survives; twin build {twin_status}")
+    status = V.WARN if twin_status == V.FAIL else V.PASS
+    return V.CheckResult("lorem_twin", status, summary)
 
 
 def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | None = None,
                    progress: Progress | None = None) -> dict[str, Any]:
     """Convert one Word file, render it through the theme, run every check and write the report.
 
-    Raises FileNotFoundError when the source is missing and propagates tool errors.
+    Also renders the Word file itself to original.pdf and builds the lorem-ipsum twin under
+    lorem/ (both optional through BuildOptions). Raises FileNotFoundError when the source is
+    missing and propagates tool errors.
     """
     progress = progress or _noop
     source = source.resolve()
@@ -136,7 +218,7 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
     previous: dict[str, str] = {}
     prev_state = read_state(out_dir)
     if prev_state:
-        previous = {k: prev_state[k] for k in COVER_FIELDS if prev_state.get(k)}
+        previous = {k: prev_state[k] for k in COVER_FIELDS + ("label",) if prev_state.get(k)}
     if out_dir.exists() and opts.clean:
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -150,23 +232,25 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
     cover_info = default_cover(previous, theme, opts)
     if ask_cover is not None:
         cover_info = ask_cover(source, cover_info)
+    check_cover_variant(theme, cover_info["cover"])
     conv.title = cover_info["title"] or conv.title
     (out_dir / "source.txt").write_text(conv.source_text, encoding="utf-8")
     state = {
         "name": source.stem, "source": str(source), "docx": str(conv.docx), "theme": str(theme_path),
         "title": conv.title, "author": conv.author, "date": conv.date,
-        "label": cover_info["label"], "number": cover_info["number"], "department": opts.department,
-        "version": cover_info["version"], "department_name": opts.department_name,
+        "number": cover_info["number"], "department": opts.department,
+        "version": cover_info["version"], "department_name": cover_info["department_name"],
+        "cover": cover_info["cover"],
         "expected_images": conv.structure.images,
         "template_import": template_import_path(compute_root(out_dir, theme_path)),
         "structure": conv.structure.as_dict(), "table_cells": conv.structure.table_cells,
         "links": conv.structure.links,
     }
-    (out_dir / STATE_FILE).write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
-    root = compute_root(out_dir, theme_path)
-    write_main(out_dir, title=conv.title, author=conv.author, date=conv.date, root=root, department=opts.department,
-               number=cover_info["number"] or None, label=cover_info["label"] or None,
-               department_name=opts.department_name, version=cover_info["version"] or None)
+    if prev_state and prev_state.get("anonymized"):
+        state["anonymized"] = True
+        state["anonymize_stats"] = prev_state.get("anonymize_stats", {})
+    _write_state(out_dir, state)
+    _write_main_from_state(out_dir, state)
 
     checks, pdf, extra = _render_and_verify(out_dir, state, conv.source_text, conv.structure,
                                             conv.structure.images, theme_path, progress)
@@ -216,6 +300,17 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
     if conv.pandoc_stderr:
         checks.append(V.CheckResult("pandoc_warnings", V.WARN, "pandoc reported warnings",
                                     details=conv.pandoc_stderr.splitlines()[:20]))
+
+    if opts.original_pdf:
+        checks.append(_render_original(source, out_dir, progress))
+    if opts.twins and not state.get("anonymized"):
+        twin_report, twin_error = None, None
+        try:
+            twin_report = _build_twin(out_dir, state, progress)
+        except (AnonymizeError, RuntimeError, ValueError, OSError) as e:
+            twin_error = str(e)
+        checks.append(_twin_check(twin_report, read_state(twin_dir_for(out_dir)), twin_error))
+
     progress("reporting", "writing the report")
     info = {
         "title": conv.title, "author": conv.author, "date": conv.date,
@@ -236,31 +331,201 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
     return report
 
 
-def verify_document(out_dir: Path, theme: Path | None = None, *, progress: Progress | None = None) -> dict[str, Any]:
-    """Recompile an output folder from its (possibly hand-edited) .typ files and re-run every check."""
-    progress = progress or _noop
+COVER_EDITABLE = ("title", "number", "version", "cover", "department", "department_name", "author", "date")
+
+
+def update_cover(out_dir: Path, fields: dict[str, str | None]) -> dict[str, Any]:
+    """Change the cover/metadata fields of a built document and regenerate main.typ.
+
+    Only keys in COVER_EDITABLE are applied. An empty value clears the field so the theme
+    default applies again (title keeps its previous value when emptied). The lorem twin, if
+    present, gets lorem-ised copies of the new values. The PDF is not recompiled here; run
+    verify_document afterwards. Raises ValueError for a cover variant the theme does not define.
+    """
     out_dir = out_dir.resolve()
     state = read_state(out_dir)
     if state is None:
         raise FileNotFoundError(f"{out_dir}: no {STATE_FILE}; not a wordeasy output folder")
-    source_text = (out_dir / "source.txt").read_text(encoding="utf-8")
+    if "cover" in fields:
+        check_cover_variant(load_theme(Path(state["theme"])), (fields["cover"] or "").strip())
+    for key in COVER_EDITABLE:
+        if key not in fields:
+            continue
+        value = (fields[key] or "").strip()
+        if key == "title" and not value:
+            continue
+        # cover fields and author/date are always strings; the department pair is None when
+        # unset so the theme default applies
+        state[key] = value or (None if key in ("department", "department_name") else "")
+    state.pop("label", None)
+    _write_state(out_dir, state)
+    _write_main_from_state(out_dir, state)
+    twin_dir = twin_dir_for(out_dir)
+    twin_state = read_state(twin_dir)
+    if twin_state is not None:
+        _lorem_cover(twin_state, state, Random())
+        _write_state(twin_dir, twin_state)
+        _write_main_from_state(twin_dir, twin_state)
+    return state
+
+
+def _restore_structure(state: dict[str, Any]) -> past.Structure:
     struct = past.Structure()
     s = state["structure"]
     struct.headings.update({int(k): v for k, v in s["headings"].items()})
     struct.tables, struct.images, struct.list_items = s["tables"], s["images"], s["list_items"]
     struct.notes, struct.code_blocks, struct.block_quotes = s["footnotes"], s["code_blocks"], s["block_quotes"]
     struct.table_cells, struct.links = state["table_cells"], state["links"]
+    return struct
+
+
+def verify_document(out_dir: Path, theme: Path | None = None, *, progress: Progress | None = None) -> dict[str, Any]:
+    """Recompile an output folder from its (possibly hand-edited) .typ files and re-run every check.
+
+    The lorem twin under lorem/, when present, is recompiled and re-checked the same way so
+    both comparison views follow a template or cover change.
+    """
+    progress = progress or _noop
+    out_dir = out_dir.resolve()
+    state = read_state(out_dir)
+    if state is None:
+        raise FileNotFoundError(f"{out_dir}: no {STATE_FILE}; not a wordeasy output folder")
+    source_text = (out_dir / "source.txt").read_text(encoding="utf-8")
+    struct = _restore_structure(state)
     theme_path = Path(theme).resolve() if theme else Path(state["theme"])
     new_import = relocate_main(out_dir / "main.typ", state.get("template_import", ""), compute_root(out_dir, theme_path))
     if new_import != state.get("template_import"):
         state["template_import"] = new_import
-        (out_dir / STATE_FILE).write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
+        _write_state(out_dir, state)
     checks, pdf, extra = _render_and_verify(out_dir, state, source_text, struct, state["expected_images"],
                                             theme_path, progress)
+    if (out_dir / ORIGINAL_PDF).exists():
+        checks.append(V.CheckResult("original_pdf", V.PASS, f"{ORIGINAL_PDF} kept from the build"))
+    twin_dir = twin_dir_for(out_dir)
+    if read_state(twin_dir) is not None:
+        progress("anonymizing", "recompiling the lorem ipsum twin")
+        twin_report = verify_document(twin_dir, theme_path, progress=progress)
+        _scrub_twin(twin_dir)
+        checks.append(_twin_check(twin_report, read_state(twin_dir), None))
     progress("reporting", "writing the report")
     info = {"title": state["title"], "author": state["author"], "date": state["date"],
-            "structure": s, "typst_warnings": extra.get("typst_warnings", []), "tools": tool_versions(),
+            "structure": state["structure"], "typst_warnings": extra.get("typst_warnings", []), "tools": tool_versions(),
             "note": "re-verified from edited Typst sources"}
-    report = build_report(source=Path(state["source"]), out_dir=out_dir, pdf=pdf, checks=checks, info=info)
+    report = build_report(source=out_dir / state["source"], out_dir=out_dir, pdf=pdf, checks=checks, info=info)
     write_report(report, out_dir)
     return report
+
+
+# ------------------------------------------------------------------ lorem ipsum twin
+def _lorem_cover(twin_state: dict[str, Any], state: dict[str, Any], rng: Random) -> None:
+    """Give the twin lorem-ised copies of the document's cover fields (the variant is design: kept)."""
+    for key in ("title", "number", "version", "department", "department_name"):
+        value = state.get(key)
+        twin_state[key] = lorem_like(value, rng) if value else value
+    twin_state["cover"] = state.get("cover") or ""
+
+
+def _scrub_twin(twin_dir: Path) -> None:
+    """Make every path the twin records relative to its own folder: nothing inside lorem/ may
+    name the original document, and the parent folder carries its name."""
+    twin_dir = twin_dir.resolve()
+    root = compute_root(twin_dir, Path(read_state(twin_dir)["theme"]))
+    prefixes = [str(twin_dir), root_relative(twin_dir, root)]
+
+    def scrub(obj: Any) -> Any:
+        if isinstance(obj, str):
+            for p in prefixes:
+                obj = obj.replace(p + "/", "").replace(p, ".")
+            return obj
+        if isinstance(obj, list):
+            return [scrub(x) for x in obj]
+        if isinstance(obj, dict):
+            return {k: scrub(v) for k, v in obj.items()}
+        return obj
+
+    state = scrub(read_state(twin_dir))
+    _write_state(twin_dir, state)
+    report_file = twin_dir / "report.json"
+    if report_file.exists():
+        write_report(scrub(json.loads(report_file.read_text(encoding="utf-8"))), twin_dir)
+    for name in ("_reader.json", "_reader.log"):  # pandoc's read-back dump: absolute media paths, needed by nothing
+        (twin_dir / name).unlink(missing_ok=True)
+
+
+def _build_twin(out_dir: Path, state: dict[str, Any], progress: Progress) -> dict[str, Any]:
+    """Build the lorem-ipsum twin of a built document under out_dir/lorem/.
+
+    The anonymised Word file is verified against the original before it is rendered with
+    LibreOffice (lorem/original.pdf) and built through the normal pipeline (lorem/lorem.pdf).
+    Nothing in lorem/ refers to the original: paths are relative and every word is replaced.
+    Any failure removes the half-made folder and raises.
+    """
+    source = Path(state["source"])
+    if not source.exists():
+        raise FileNotFoundError(f"original document not found: {source}")
+    theme_path = Path(state["theme"])
+    theme = load_theme(theme_path)
+    twin_dir = twin_dir_for(out_dir)
+    if twin_dir.exists():
+        shutil.rmtree(twin_dir)
+    twin_dir.mkdir(parents=True)
+    twin_docx = twin_dir / f"{TWIN_DIR}.docx"
+    rng = Random()
+    try:
+        with tempfile.TemporaryDirectory(prefix="wordeasy-anon-") as tmp:
+            progress("anonymizing", "preparing the original")
+            docx, _ = preflight(source, Path(tmp))  # legacy formats go through LibreOffice into the temp dir
+            progress("anonymizing", "replacing every word, number and image")
+            result = anonymize_docx(docx, twin_docx, heading_style_names=tuple(theme.get("style_map", {}).keys()))
+            progress("checking", "verifying that no original word survived")
+            stats = verify_anonymized(docx, twin_docx, result.placeholders)
+            orig_words = original_word_set(docx)
+        twin_cover: dict[str, Any] = {}
+        _lorem_cover(twin_cover, state, rng)
+        opts = BuildOptions(
+            theme=theme_path, out_root=out_dir, accept_changes=True, twins=False, original_pdf=True,
+            title=twin_cover["title"] or None, number=twin_cover["number"] or None,
+            version=twin_cover["version"] or None, department=twin_cover["department"] or None,
+            department_name=twin_cover["department_name"] or None,
+            cover=twin_cover["cover"] or None,  # a variant name, not content: the twin keeps the same look
+        )
+        report = build_document(twin_docx, opts, progress=progress)
+        progress("checking", "scanning the extracted text for original words")
+        leaked = leaked_into_text((twin_dir / "source.txt").read_text(encoding="utf-8"), orig_words)
+        if leaked:
+            raise AnonymizeError(f"{len(leaked)} original word(s) reached the extracted text: {', '.join(leaked[:15])}")
+        twin_state = read_state(twin_dir) or {}
+        twin_state["anonymized"] = True
+        twin_state["anonymize_stats"] = {**stats, "dropped_parts": len(result.dropped_parts)}
+        _write_state(twin_dir, twin_state)
+        _scrub_twin(twin_dir)
+        return json.loads((twin_dir / "report.json").read_text(encoding="utf-8"))
+    except BaseException:
+        shutil.rmtree(twin_dir, ignore_errors=True)  # never leave a half-made twin behind
+        raise
+
+
+def anonymize_document(out_dir: Path, *, progress: Progress | None = None) -> dict[str, Any]:
+    """(Re)build the lorem-ipsum twin of a built document; returns the twin's report.
+
+    The twin is normally built together with the document; this rebuilds it on demand, e.g.
+    after it was refused or when LibreOffice was installed later.
+    """
+    progress = progress or _noop
+    out_dir = out_dir.resolve()
+    state = read_state(out_dir)
+    if state is None:
+        raise FileNotFoundError(f"{out_dir}: no {STATE_FILE}; not a wordeasy output folder")
+    if state.get("anonymized"):
+        raise AnonymizeError("this document is already a lorem ipsum twin")
+    twin_report = _build_twin(out_dir, state, progress)
+    # record the outcome in the document's own report so the check list stays truthful
+    report_file = out_dir / "report.json"
+    if report_file.exists():
+        report = json.loads(report_file.read_text(encoding="utf-8"))
+        check = _twin_check(twin_report, read_state(twin_dir_for(out_dir)), None).as_dict()
+        report["checks"] = [c for c in report["checks"] if c["name"] != "lorem_twin"] + [check]
+        report["status"] = V.worst([V.CheckResult(c["name"], c["status"], c["summary"], details=c.get("details", []))
+                                    for c in report["checks"]])
+        write_report(report, out_dir)
+    return twin_report

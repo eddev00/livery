@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(out/**)",
+      "Edit(out/**)",
+      "Write(out/**)",
+      "Read(/absolute/path/to/real/inputs/**)",
+      "Read(/absolute/path/to/real/out/**)"
+    ]
+  }
+}
