@@ -142,8 +142,8 @@
               <div class="two-col">${variantSelect(f.cover || "", "previous build, then the theme default")}${field("department_name", "Department name", "label above the title", f.department_name)}${field("number", "Cover number", "", f.number)}${field("title", "Title", "blank: from the document", f.title)}${field("version", "Version", "e.g. V1, MAR 2026", f.version)}</div>
               <p class="muted small" style="margin-top:12px">Blank fields keep the previous build's answers, then the theme defaults. Values apply to every file in this batch.</p>
             </details>
-            <details class="group" ${f.department || f.author || f.date ? "open" : ""}><summary>Department symbol and metadata</summary>
-              <div class="two-col">${field("department", "Department symbol", "e.g. IT: footer prefix, big glyph on the cover", f.department)}${field("author", "Author override", "", f.author)}${field("date", "Date override", "", f.date)}</div>
+            <details class="group" ${f.department ? "open" : ""}><summary>Department symbol</summary>
+              <div class="two-col">${field("department", "Department symbol", "e.g. IT: footer prefix, big glyph on the cover", f.department)}</div>
             </details>
             <div class="form-foot"><button class="btn primary" type="submit" id="run">Build</button><span class="muted small" id="runhint"></span></div>
           </div></form></div>
@@ -300,6 +300,34 @@
     const tick = setInterval(() => { if (location.hash !== `#/job/${id}`) { clearInterval(tick); es.close(); } else if (snap.state !== "done") refresh(); }, 2000);
   }
 
+  // ---------------------------------------------------------------- edge case dialog
+  async function openEdgeCaseDialog(id) {
+    if (!STATE) STATE = await api("/api/state");
+    const ec = STATE.edge_cases || {};
+    const modal = $("#modal");
+    modal.hidden = false;
+    modal.innerHTML = `<div class="dialog" role="dialog" aria-label="Add to edge cases" style="width:min(580px,100%)">
+      <div class="head"><strong>Add to edge cases</strong><span style="flex:1"></span><button class="btn icon" id="close" title="Close">✕</button></div>
+      <div class="fields" style="padding:16px 18px">
+        <p class="muted small" style="margin:0">Copies only the lorem twin's Word file (not one word, number or image of the original) into <code>${esc(ec.dir || "")}</code> and commits it${ec.push ? `, then pushes it to <code>origin/${esc(ec.branch || "edge-cases")}</code>` : ""}. The name and the note are the only free text that travels with it: do not type the document's name, people, or anything from its content.</p>
+        <div class="field"><label>Case name <span class="hint">lowercase letters, digits and dashes</span></label><input id="ec-slug" value="${esc(ec.default_slug || "")}" spellcheck="false" autocomplete="off"></div>
+        <div class="field"><label>What is wrong <span class="hint">in neutral words, e.g. “header row of the second table is dropped”</span></label><textarea id="ec-note" rows="3"></textarea></div>
+      </div>
+      <div class="foot"><span class="muted small" id="ec-msg"></span><span style="flex:1"></span><button class="btn" id="cancel">Cancel</button><button class="btn primary" id="ec-send">Add to edge cases</button></div></div>`;
+    const close = () => { modal.hidden = true; modal.innerHTML = ""; };
+    $("#close", modal).onclick = $("#cancel", modal).onclick = close;
+    modal.onclick = (e) => { if (e.target === modal) close(); };
+    $("#ec-send", modal).onclick = async () => {
+      const btn = $("#ec-send", modal);
+      btn.disabled = true; $("#ec-msg", modal).textContent = ec.push ? "Committing and pushing…" : "Committing…";
+      try {
+        const r = await postJSON(`/api/docs/${id}/edge-case`, { slug: $("#ec-slug", modal).value, note: $("#ec-note", modal).value });
+        close(); toast(`Edge case ${r.slug}: ${r.message}`); renderDoc(id, "lorem");
+      } catch (err) { $("#ec-msg", modal).textContent = err.message; btn.disabled = false; }
+    };
+    $("#ec-slug", modal).focus();
+  }
+
   // ---------------------------------------------------------------- document view
   const HUNK = /^\[(\w+)\] …(.*?) «(.*)» → «(.*)» (.*?)…$/s;
   function detailHTML(d) {
@@ -316,7 +344,7 @@
     const s = info.structure || {};
     const stats = [["headings", Object.values(s.headings || {}).reduce((a, b) => a + b, 0)], ["tables", s.tables], ["table cells", s.table_cells], ["images", s.images], ["list items", s.list_items], ["footnotes", s.footnotes], ["links", s.links]]
       .filter(([, v]) => v !== undefined).map(([k, v]) => `<span class="stat"><b>${v}</b>${k}</span>`).join("");
-    const kv = [["Title", info.title], ["Author", info.author], ["Date", info.date], ["Converted from", info.converted_from], ["Cover variant", state?.cover], ["Department name", state?.department_name], ["Cover number", state?.number], ["Version", state?.version], ["Note", info.note]]
+    const kv = [["Title", info.title], ["Converted from", info.converted_from], ["Cover variant", state?.cover], ["Department name", state?.department_name], ["Cover number", state?.number], ["Version", state?.version], ["Note", info.note]]
       .filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
     const list = (title, items, fmt = esc) => items && items.length ? `<div class="section-title">${title}</div><ul class="small" style="margin:0;padding-left:16px">${items.map((x) => `<li>${fmt(x)}</li>`).join("")}</ul>` : "";
     return `<div class="card">
@@ -335,7 +363,7 @@
     const f = (name, label, hint = "") => `<div class="field"><label>${label}${hint ? ` <span class="hint">${hint}</span>` : ""}</label><input type="text" name="${name}" value="${esc(st[name] || "")}"></div>`;
     return `<div class="card"><div class="card-title-row"><h2>Cover &amp; metadata</h2></div>
       <form id="coverform" autocomplete="off">
-        <div class="two-col">${variantSelect(st.cover || "", "theme default")}${f("department_name", "Department name", "label above the title and name under the symbol")}${f("title", "Title")}${f("number", "Cover number")}${f("version", "Version", "e.g. V1, MAR 2026")}${f("department", "Department symbol", "e.g. IT: footer prefix, big glyph")}${f("author", "Author")}${f("date", "Date")}</div>
+        <div class="two-col">${variantSelect(st.cover || "", "theme default")}${f("department_name", "Department name", "label above the title and name under the symbol")}${f("title", "Title")}${f("number", "Cover number")}${f("version", "Version", "e.g. V1, MAR 2026")}${f("department", "Department symbol", "e.g. IT: footer prefix, big glyph")}</div>
         <div class="form-foot"><button class="btn primary" type="submit" id="coversave">Save &amp; rebuild</button><span class="muted small">Empty fields fall back to the theme defaults. Content is untouched; every check runs again, and the lorem twin gets lorem-ised copies of the new values.</span></div>
       </form></div>`;
   }
@@ -373,7 +401,8 @@
       + `<section class="tabbody" data-tab="lorem" ${tab === "lorem" ? "" : "hidden"}>
           ${doc.anonymized ? `<div class="card empty">This document is itself a lorem ipsum twin.</div>`
             : `<div class="tabnote">${twin ? `${chip(twin.status)}<span class="note">${esc(twinCheck?.summary || "Lorem ipsum twin: same structure and design, no real data.")}</span>` : `${chip("WARN", "missing")}<span class="note">${esc(twinCheck?.summary || "No lorem twin has been built for this document yet.")}</span>`}
-              <button class="btn small ${twin ? "" : "primary"}" id="anonymize" title="Build the twin again: every word, number and image replaced, verified to contain no word of the original">${twin ? "Rebuild twin" : "Build twin"}</button></div>`
+              <button class="btn small ${twin ? "" : "primary"}" id="anonymize" title="Build the twin again: every word, number and image replaced, verified to contain no word of the original">${twin ? "Rebuild twin" : "Build twin"}</button>
+              <button class="btn small" id="edgecase" ${twin && !doc.state?.edge_case ? "" : "disabled"} title="Copy the twin's Word file into the code repository's tests/fixtures/edge-cases/ so the developers can reproduce and fix this case without ever seeing the document">${doc.state?.edge_case ? `Forwarded as ${esc(doc.state.edge_case)}` : "Add to edge cases"}</button></div>`
             + compareHTML(
               { title: "Lorem original", sub: "the anonymised Word file as LibreOffice renders it", url: file(twin?.original_pdf), missing: twin ? "No lorem/original.pdf: LibreOffice was not found at build time." : "No twin yet." },
               { title: "Lorem generated", sub: "the anonymised file styled through the template", url: file(twin?.pdf), missing: twin ? "No PDF: the twin's render failed." : "No twin yet." })}</section>`
@@ -395,6 +424,7 @@
 
     $("#reverify").addEventListener("click", () => startVerify(id));
     $("#delete").addEventListener("click", async () => { if (await deleteDoc(id, doc.name)) location.hash = "#/"; });
+    $("#edgecase")?.addEventListener("click", () => openEdgeCaseDialog(id));
     $("#anonymize")?.addEventListener("click", async () => {
       $("#anonymize").disabled = true;
       try { const job = await postJSON(`/api/docs/${id}/anonymize`, {}); watchTopbar(job.id); toast("Building the lorem ipsum twin"); followJob(job.id, id); }

@@ -1,0 +1,12 @@
+#!/bin/sh
+# Refuse to commit any document or PDF outside tests/fixtures/, and anything under
+# out/ or samples/. Live documents never belong in this repository; only lorem-ipsum
+# twins do, and only as test fixtures. See docs/live-side.md.
+set -e
+bad=$(git diff --cached --name-only --diff-filter=ACR | grep -Ei '(^out/|^samples/|\.(docx|docm|doc|odt|rtf|pdf)$)' | grep -Ev '^tests/fixtures/' || true)
+if [ -n "$bad" ]; then
+  echo "pre-commit: refusing to commit document files outside tests/fixtures/:" >&2
+  echo "$bad" | sed 's/^/  /' >&2
+  echo "If this is a lorem-ipsum twin, put it under tests/fixtures/edge-cases/." >&2
+  exit 1
+fi

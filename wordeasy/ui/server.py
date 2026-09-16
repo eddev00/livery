@@ -35,7 +35,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from .. import verify as V
 from ..convert import DEFAULT_THEME, load_theme
-from ..pipeline import COVER_EDITABLE, ORIGINAL_PDF, STATE_FILE, BuildOptions, anonymize_document, build_document, cover_variants, out_dir_for, read_state, twin_dir_for, update_cover, verify_document
+from ..edge_cases import DEFAULT_BRANCH, EDGE_CASES_DIR, add_edge_case, default_slug
+from ..pipeline import COVER_EDITABLE, ORIGINAL_PDF, STATE_FILE, BuildOptions, _write_state, anonymize_document, build_document, cover_variants, out_dir_for, read_state, twin_dir_for, update_cover, verify_document
 from ..tools import REPO_ROOT, TEMPLATE_DIR, tool_versions
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -268,11 +269,12 @@ class LocalOnly(BaseHTTPMiddleware):
 
 
 # ------------------------------------------------------------------ app
-def create_app(*, token: str, out_root: Path, hosts: set[str]) -> FastAPI:
+def create_app(*, token: str, out_root: Path, hosts: set[str], edge_cases_dir: Path | None = None, push: bool = False) -> FastAPI:
     app = FastAPI(title="wordeasy", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(LocalOnly, token=token, hosts=hosts)
     registry = Registry(out_root)
     runner = Runner(registry)
+    edge_dir = Path(edge_cases_dir or EDGE_CASES_DIR).expanduser().resolve()
     app.state.registry, app.state.runner, app.state.server = registry, runner, None
 
     def static(name: str, media_type: str) -> Response:
@@ -298,6 +300,7 @@ def create_app(*, token: str, out_root: Path, hosts: set[str]) -> FastAPI:
             "template": str(DEFAULT_THEME.resolve()),
             "cover_variants": cover_variants(load_theme(DEFAULT_THEME)),  # re-read: the theme is editable in the UI
             "tools": tool_versions(),
+            "edge_cases": {"dir": str(edge_dir), "push": push, "branch": DEFAULT_BRANCH, "default_slug": default_slug()},
             "jobs": [j.snapshot() for j in sorted(runner.jobs.values(), key=lambda j: j.created, reverse=True)][:20],
         }
 
@@ -351,6 +354,35 @@ def create_app(*, token: str, out_root: Path, hosts: set[str]) -> FastAPI:
         runner.submit(job)
         return job.snapshot()
 
+    @app.post("/api/docs/{doc_id}/edge-case")
+    async def api_edge_case(doc_id: str, request: Request) -> dict[str, Any]:
+        """Forward the document's lorem twin to the code repository as tests/fixtures/edge-cases/<slug>.docx."""
+        d = registry.get(doc_id)
+        state = read_state(d) or {}
+        if state.get("anonymized"):
+            raise HTTPException(400, "this document is itself a lorem ipsum twin")
+        if state.get("edge_case"):
+            raise HTTPException(409, f"already forwarded as “{state['edge_case']}”")
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise HTTPException(400, "expected a JSON object")
+        twin = twin_dir_for(d)
+        twin_state = read_state(twin) or {}
+        if not twin_state.get("anonymized"):
+            raise HTTPException(400, "no lorem twin: build the twin first")
+        try:
+            result = add_edge_case(twin / (twin_state.get("docx") or "lorem.docx"),  # state paths are relative to the twin folder
+                                   slug=str(body.get("slug") or ""), note=str(body.get("note") or ""),
+                                   source_name=str(state.get("source") or state.get("name") or d.name),
+                                   dest_dir=edge_dir, twin_report=_read_json(twin / "report.json"), push=push)
+        except FileExistsError as e:
+            raise HTTPException(409, str(e)) from e
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        state["edge_case"] = result["slug"]
+        _write_state(d, state)
+        return {"ok": True, **result}
+
     @app.post("/api/docs/{doc_id}/cover")
     async def api_cover(doc_id: str, request: Request) -> dict[str, Any]:
         """Change cover/metadata fields, regenerate main.typ, then rebuild and re-verify."""
@@ -387,7 +419,7 @@ def create_app(*, token: str, out_root: Path, hosts: set[str]) -> FastAPI:
         opts = BuildOptions(
             theme=DEFAULT_THEME.resolve(), out_root=root,
             accept_changes=bool(o.get("accept_changes")), clean=bool(o.get("clean")),
-            title=text("title"), author=text("author"), date=text("date"), department=text("department"),
+            title=text("title"), department=text("department"),
             number=text("number"), version=text("version"),
             department_name=text("department_name"), cover=text("cover"),
         )
@@ -532,13 +564,13 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
-def serve(*, out_root: Path, port: int = 0, open_browser: bool = True) -> int:
+def serve(*, out_root: Path, port: int = 0, open_browser: bool = True, edge_cases_dir: Path | None = None, push: bool = False) -> int:
     import uvicorn
 
     port = port or free_port()
     token = secrets.token_urlsafe(32)
     hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
-    app = create_app(token=token, out_root=out_root, hosts=hosts)
+    app = create_app(token=token, out_root=out_root, hosts=hosts, edge_cases_dir=edge_cases_dir, push=push)
     url = f"http://127.0.0.1:{port}/?token={token}"
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", access_log=False)
     server = uvicorn.Server(config)

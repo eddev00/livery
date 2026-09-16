@@ -40,6 +40,16 @@ they are picked up when the system ones are missing. LibreOffice renders
 `.doc`/`.odt`/`.rtf`/`.docm` inputs; without it the build still succeeds and
 reports the missing original as WARN.
 
+## Where the Word files live
+
+Live documents never sit inside this repository. The build and the UI take an output
+root with `--out`; on the live side both point at a folder outside the checkout, on a
+user or machine where no AI coding agent runs. Edge cases travel the other way as
+lorem-ipsum twins under `tests/fixtures/edge-cases/`, which the test suite builds and
+which the pre-commit hook (`git config core.hooksPath .githooks`) is the only place
+it lets a document file be committed. The full procedure is in
+[docs/live-side.md](docs/live-side.md).
+
 ## Use
 
 ```
@@ -75,11 +85,18 @@ page has four tabs:
   rendered by LibreOffice, and the anonymised file styled through the template.
   "Rebuild twin" builds the twin again on demand.
 - **Cover & metadata** — the generation data (cover variant, department name,
-  title, number, version, department symbol, author, date). "Save & rebuild"
+  title, number, version, department symbol). "Save & rebuild"
   regenerates `main.typ`, gives the twin lorem-ised copies of the new values and
   recompiles and re-checks both.
 - **Report** — every integrity check with diff hunks highlighted, plus the
   structure and the tools used.
+
+The Lorem tab's **Add to edge cases** copies the twin's Word file (and nothing else)
+into `tests/fixtures/edge-cases/` of the checkout with a neutral name and a short
+note, commits the two files, and pushes them to `origin/edge-cases` when the UI was
+started with `--push`. That is how a misbehaving document reaches the developers
+without the document itself ever leaving the live side; see
+[docs/live-side.md](docs/live-side.md).
 
 The UI always styles with `template/`; after editing the template, "Rebuild &
 re-verify" on a document recompiles it (and its twin) and runs every check again.
@@ -112,7 +129,8 @@ It is strictly local:
 - the `Host` header must match the loopback address (blocks DNS rebinding) and
   state-changing requests must originate from the page itself
 - files are served only from registered wordeasy output folders, by extension
-- no CORS, no outbound network, no telemetry; Ctrl-C or the Quit button ends it
+- no CORS, no outbound network, no telemetry; Ctrl-C or the Quit button ends it.
+  The one exception is opt-in: `--push` lets "Add to edge cases" run `git push`
 
 Exit codes: `0` every document PASS/WARN, `1` at least one FAIL, `2` tool or I/O error.
 
@@ -167,7 +185,7 @@ words of context on each side, in `report.md` and on the console.
 Dropped by design and listed in the report: Word headers/footers (the template
 provides its own), comments, and Word's own table of contents (paragraphs in
 `toc N` styles plus the styles/heading texts listed under `[source]` in
-`theme.toml`); the template regenerates the TOC. Document title/author/date go to the cover page.
+`theme.toml`); the template regenerates the TOC. The document title goes to the cover page.
 
 ## Development
 
