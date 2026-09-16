@@ -38,7 +38,7 @@ def relocate_main(main: Path, old_import: str, root: Path) -> str:
     return new_import
 
 
-def write_main(out_dir: Path, *, title: str, author: str, date: str, root: Path,
+def write_main(out_dir: Path, *, title: str, root: Path,
                department: str | None = None, number: str | None = None,
                department_name: str | None = None, version: str | None = None,
                cover: str | None = None) -> Path:
@@ -58,8 +58,6 @@ def write_main(out_dir: Path, *, title: str, author: str, date: str, root: Path,
         f"#import {_typst_str(template_rel)}: project\n"
         "#show: project.with(\n"
         f"  title: {_typst_str(title)},\n"
-        f"  author: {_typst_str(author)},\n"
-        f"  date: {_typst_str(date)},\n"
         f"{dept_line}"
         ")\n"
         '#include "content.typ"\n',

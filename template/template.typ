@@ -21,8 +21,6 @@
 
 #let project(
   title: "",
-  author: "",
-  date: "",
   department: none,
   department_name: none,
   version: none,
@@ -70,10 +68,7 @@
   }
 
   // ---------------------------------------------------------------- document
-  set document(
-    title: title,
-    author: if author == "" { () } else { (author,) },
-  )
+  set document(title: title)
 
   // Footer on every page: document title on the left, page number on the right.
   // It spans from `footer_side_margin` off the left page edge to the same off the
@@ -442,9 +437,6 @@
         #let title-block = cover-text("title", title, default-color: "#FFFFFF", edges: (top-edge: "cap-height"))
         #stack(dir: ttb, spacing: _len(cv.at("label_gap", default: "0.3em")), ..(label-block, title-block).filter(x => x != none))
         #if cv.subtitle != "" { v(0.4em); text(size: 16pt, cv.subtitle) }
-        #if author != "" or date != "" { v(0.8em) }
-        #if author != "" { text(size: 13pt, author); linebreak() }
-        #if date != "" { text(size: 11pt, date) }
       ])
       #if dept != "" or dept-name != "" or doc-version != "" {
         place(bottom + left,

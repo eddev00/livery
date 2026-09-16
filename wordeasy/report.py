@@ -49,7 +49,7 @@ def render_markdown(r: dict[str, Any]) -> str:
             lines += [f"- {d}" for d in c["details"]]
     info = r.get("info", {})
     lines += ["", "## Source document", ""]
-    for k in ("title", "author", "date", "converted_from"):
+    for k in ("title", "converted_from"):
         if info.get(k):
             lines.append(f"- {k}: {info[k]}")
     if info.get("tracked_changes"):

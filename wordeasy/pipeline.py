@@ -51,8 +51,6 @@ class BuildOptions:
     accept_changes: bool = False
     clean: bool = False
     title: str | None = None
-    author: str | None = None
-    date: str | None = None
     department: str | None = None       # short symbol ("IT"): footer prefix and big glyph on the cover
     number: str | None = None
     version: str | None = None
@@ -121,8 +119,7 @@ def default_cover(previous: dict[str, str], theme: dict[str, Any], opts: BuildOp
 
 def _write_main_from_state(out_dir: Path, state: dict[str, Any]) -> None:
     theme_path = Path(state["theme"])
-    write_main(out_dir, title=state["title"], author=state.get("author") or "", date=state.get("date") or "",
-               root=compute_root(out_dir, theme_path), department=state.get("department"),
+    write_main(out_dir, title=state["title"], root=compute_root(out_dir, theme_path), department=state.get("department"),
                number=state.get("number") or None, department_name=state.get("department_name") or None,
                version=state.get("version") or None, cover=state.get("cover") or None)
 
@@ -224,8 +221,7 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
     out_dir.mkdir(parents=True, exist_ok=True)
 
     progress("converting", "converting with pandoc")
-    conv = convert(source, out_dir, theme, accept_changes=opts.accept_changes,
-                   title=opts.title, author=opts.author, date=opts.date)
+    conv = convert(source, out_dir, theme, accept_changes=opts.accept_changes, title=opts.title)
     if not previous.get("title"):
         previous["title"] = conv.title
     progress("cover", "collecting cover information")
@@ -237,7 +233,7 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
     (out_dir / "source.txt").write_text(conv.source_text, encoding="utf-8")
     state = {
         "name": source.stem, "source": str(source), "docx": str(conv.docx), "theme": str(theme_path),
-        "title": conv.title, "author": conv.author, "date": conv.date,
+        "title": conv.title,
         "number": cover_info["number"], "department": opts.department,
         "version": cover_info["version"], "department_name": cover_info["department_name"],
         "cover": cover_info["cover"],
@@ -313,7 +309,7 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
 
     progress("reporting", "writing the report")
     info = {
-        "title": conv.title, "author": conv.author, "date": conv.date,
+        "title": conv.title,
         "converted_from": conv.converted_from,
         "tracked_changes": conv.revisions.as_dict() if conv.revisions.has_tracked_changes else None,
         "comments": conv.revisions.comments,
@@ -331,7 +327,7 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
     return report
 
 
-COVER_EDITABLE = ("title", "number", "version", "cover", "department", "department_name", "author", "date")
+COVER_EDITABLE = ("title", "number", "version", "cover", "department", "department_name")
 
 
 def update_cover(out_dir: Path, fields: dict[str, str | None]) -> dict[str, Any]:
@@ -354,7 +350,7 @@ def update_cover(out_dir: Path, fields: dict[str, str | None]) -> dict[str, Any]
         value = (fields[key] or "").strip()
         if key == "title" and not value:
             continue
-        # cover fields and author/date are always strings; the department pair is None when
+        # cover fields are always strings; the department pair is None when
         # unset so the theme default applies
         state[key] = value or (None if key in ("department", "department_name") else "")
     state.pop("label", None)
@@ -408,7 +404,7 @@ def verify_document(out_dir: Path, theme: Path | None = None, *, progress: Progr
         _scrub_twin(twin_dir)
         checks.append(_twin_check(twin_report, read_state(twin_dir), None))
     progress("reporting", "writing the report")
-    info = {"title": state["title"], "author": state["author"], "date": state["date"],
+    info = {"title": state["title"],
             "structure": state["structure"], "typst_warnings": extra.get("typst_warnings", []), "tools": tool_versions(),
             "note": "re-verified from edited Typst sources"}
     report = build_report(source=out_dir / state["source"], out_dir=out_dir, pdf=pdf, checks=checks, info=info)
