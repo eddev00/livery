@@ -33,8 +33,6 @@ class ConvertResult:
     content_typ: Path
     converted_from: str | None
     title: str
-    author: str
-    date: str
     source_ast: dict[str, Any]
     source_text: str
     source_notes: list[str]
@@ -170,8 +168,6 @@ def convert(
     *,
     accept_changes: bool = False,
     title: str | None = None,
-    author: str | None = None,
-    date: str | None = None,
 ) -> ConvertResult:
     tools = require_tools("pandoc")
     pandoc = tools["pandoc"]
@@ -253,8 +249,6 @@ def convert(
         content_typ=content_typ,
         converted_from=converted_from,
         title=title or past.meta_string(meta, "title") or source.stem,
-        author=author or past.meta_string(meta, "author"),
-        date=date or past.meta_string(meta, "date"),
         source_ast=ast,
         source_text=source_text,
         source_notes=notes,

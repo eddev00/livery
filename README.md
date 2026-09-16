@@ -27,6 +27,8 @@ Per input file you get `out/<name>/`:
 
 ## Install
 
+macOS: follow [docs/macos.md](docs/macos.md) (Homebrew, LibreOffice link, first run).
+
 Arch Linux:
 
 ```
