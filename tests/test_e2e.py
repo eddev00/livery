@@ -53,6 +53,9 @@ def test_layout_build_passes(tmp_path):
     assert fills[0]["fills"][0] == ["#1F4E79", "#1F4E79", "#1F4E79"]
     assert fills[0]["fills"][2] == [None, None, "#FFF2CC"] and fills[0]["fills"][3] == [None, None, None]
     assert fills[0]["valign"][0] == ["top", "top", "top"]
+    # vertical merge extent per cell: the merged cell covers rows 1-2, its neighbours one row each
+    assert fills[0]["rows"][1] == [[1, 2], [1, 1], [1, 1]] and fills[0]["rows"][2] == [[1, 2], [2, 1], [2, 1]]
+    assert fills[0]["rows"][3] == [[3, 1], [3, 1], [3, 1]]
     assert "= Styled Chapter Heading" in typ
     # Word's own TOC is dropped and reported; the internal link survives as text
     dropped = rep["info"]["dropped_paragraphs"]

@@ -1,11 +1,12 @@
-"""Cell background colours and vertical alignment from a .docx, in the order
-pandoc emits tables.
+"""Cell background colours, vertical alignment and vertical merges from a
+.docx, in the order pandoc emits tables.
 
 pandoc keeps table structure and inline formatting but drops shading and
 vertical alignment. This module reads word/document.xml and produces, per
-table, {"fills": grid, "valign": grid} indexed [row][column] (hex or null;
-"top" | "center" | "bottom"), with merged cells expanded to every grid position
-they cover. The template applies them by table index.
+table, {"fills": grid, "valign": grid, "rows": grid} indexed [row][column]
+(hex or null; "top" | "center" | "bottom"; [first row, row count] of the
+vertical merge the cell belongs to), with merged cells expanded to every grid
+position they cover. The template applies them by table index.
 """
 from __future__ import annotations
 
@@ -85,22 +86,39 @@ def _tables_in_cell(tc: ET.Element) -> list[ET.Element]:
     return [el for el in tc.iter(f"{W}tbl") if el is not tc]
 
 
+def _row_spans(starts: list[list[int]]) -> list[list[list[int]]]:
+    """[first row, row count] per grid position from the first row of each cell's
+    vertical merge (a cell that is not merged starts on its own row)."""
+    out = [[[s, 0] for s in row] for row in starts]
+    for y, row in enumerate(starts):
+        for x, s in enumerate(row):
+            if s != y:
+                continue
+            n = 1
+            while y + n < len(starts) and x < len(starts[y + n]) and starts[y + n][x] == y:
+                n += 1
+            for k in range(n):
+                out[y + k][x][1] = n
+    return out
+
+
 def _process_table(tbl: ET.Element):
-    """Yield {"fills", "valign"} grids in the order pandoc emits tables after the
-    filter's container-row split (wordeasy.lua rule 12): rows before the cut,
-    the nested tables of those rows, the hoisted cell's nested tables, then the
-    remaining rows as a new table, and so on."""
+    """Yield {"fills", "valign", "rows"} grids in the order pandoc emits tables
+    after the filter's container-row split (wordeasy.lua rule 12): rows before
+    the cut, the nested tables of those rows, the hoisted cell's nested tables,
+    then the remaining rows as a new table, and so on."""
     fills: list[list[str | None]] = []
     valign: list[list[str]] = []
+    starts: list[list[int]] = []
     nested_pending: list[ET.Element] = []
 
     def flush(force: bool):
-        nonlocal fills, valign, nested_pending
+        nonlocal fills, valign, starts, nested_pending
         if fills or force:
-            yield {"fills": fills, "valign": valign}
+            yield {"fills": fills, "valign": valign, "rows": _row_spans(starts)}
         for nt in nested_pending:
             yield from _process_table(nt)
-        fills, valign, nested_pending = [], [], []
+        fills, valign, starts, nested_pending = [], [], [], []
 
     for tr in tbl.findall(f"{W}tr"):
         cells = tr.findall(f"{W}tc")
@@ -112,21 +130,27 @@ def _process_table(tbl: ET.Element):
             continue
         frow: list[str | None] = []
         vrow: list[str] = []
+        srow: list[int] = []
         for tc in cells:
             fill = _fill_of(tc)
             va = _valign_of(tc)
             span = _span_of(tc)
+            start = len(fills)
             if _vmerge_continues(tc) and fills:
                 col = len(frow)
                 if fill is None and col < len(fills[-1]):
                     fill = fills[-1][col]
                 if col < len(valign[-1]):
                     va = valign[-1][col]
+                if col < len(starts[-1]):
+                    start = starts[-1][col]
             frow.extend([fill] * span)
             vrow.extend([va] * span)
+            srow.extend([start] * span)
             nested_pending.extend(_direct_tables(tc))
         fills.append(frow)
         valign.append(vrow)
+        starts.append(srow)
     yield from flush(False)
 
 
