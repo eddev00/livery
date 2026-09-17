@@ -294,3 +294,21 @@ def test_edge_case_forwarding(built_features, tmp_path):
         assert c.post(url, json={"slug": "x", "note": ""}, headers={"Origin": "http://evil.example"}).status_code == 403
 
     assert not is_twin_docx(FIXTURES / "features.docx")
+
+
+def test_batch_with_per_document_cover_fields(client, tmp_path):
+    _login(client)
+    r = client.post("/api/jobs", json={
+        "docs": [{"path": str(FIXTURES / "features.docx"), "department_name": "Finance Ops", "cover": "large", "number": "7"},
+                 {"path": str(FIXTURES / "numbered.docx"), "department_name": "Legal", "title": "Custom title", "junk": "ignored"}],
+        "options": {"out_root": str(tmp_path)}})
+    assert r.status_code == 200, r.text
+    job = _wait(client, r.json()["id"])
+    tasks = job["docs"]
+    assert [t["stage"] for t in tasks] == ["done", "done"] and all(t["error"] is None for t in tasks), tasks
+    assert tasks[0]["meta"] == {"department_name": "Finance Ops", "cover": "large", "number": "7"}
+    assert tasks[1]["meta"] == {"department_name": "Legal", "title": "Custom title"}
+    states = [client.get(f"/api/docs/{t['doc_id']}").json()["state"] for t in tasks]
+    assert states[0]["department_name"] == "Finance Ops" and states[0]["cover"] == "large" and states[0]["number"] == "7"
+    assert states[1]["department_name"] == "Legal" and states[1]["title"] == "Custom title"
+    assert client.post("/api/jobs", json={"docs": [{"department_name": "no path"}]}).status_code == 400
