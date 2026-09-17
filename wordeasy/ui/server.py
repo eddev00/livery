@@ -38,6 +38,7 @@ from ..convert import DEFAULT_THEME, load_theme
 from ..edge_cases import DEFAULT_BRANCH, EDGE_CASES_DIR, add_edge_case, default_slug
 from ..pipeline import COVER_EDITABLE, ORIGINAL_PDF, STATE_FILE, BuildOptions, _write_state, anonymize_document, build_document, cover_variants, out_dir_for, read_state, twin_dir_for, update_cover, verify_document
 from ..tools import REPO_ROOT, TEMPLATE_DIR, tool_versions
+from . import preview
 
 STATIC_DIR = Path(__file__).parent / "static"
 COOKIE = "wordeasy_session"
@@ -136,6 +137,7 @@ def _read_json(p: Path) -> dict[str, Any] | None:
 class DocTask:
     source: str
     name: str
+    meta: dict[str, str] = field(default_factory=dict)  # this document's cover fields (COVER_EDITABLE)
     stage: str = "queued"
     message: str = ""
     status: str | None = None
@@ -210,7 +212,7 @@ class Runner:
 
             try:
                 if job.kind == "build":
-                    opts = BuildOptions(**job.options["build"])
+                    opts = BuildOptions(**{**job.options["build"], **task.meta})
                     report = build_document(Path(task.source), opts, progress=progress)
                     task.doc_id = self.registry.register(Path(report["output_dir"]))
                 elif job.kind == "anonymize":
@@ -399,34 +401,38 @@ def create_app(*, token: str, out_root: Path, hosts: set[str], edge_cases_dir: P
 
     @app.post("/api/jobs")
     async def api_new_job(request: Request) -> dict[str, Any]:
+        """Build a batch. ``docs`` carries one entry per file with its own cover fields; the older
+        ``files`` + batch-wide ``options`` form is still accepted (every file gets the same fields)."""
         body = await request.json()
-        files = [Path(f).expanduser() for f in body.get("files", []) if isinstance(f, str) and f.strip()]
-        if not files:
-            raise HTTPException(400, "no files given")
-        missing = [str(f) for f in files if not f.is_file()]
-        if missing:
-            raise HTTPException(400, f"not found: {', '.join(missing)}")
-        bad = [str(f) for f in files if f.suffix.lower() not in DOC_EXTS]
-        if bad:
-            raise HTTPException(400, f"not a Word document: {', '.join(bad)}")
         o = body.get("options", {}) or {}
-        root = Path(o.get("out_root") or out_root).expanduser().resolve()
 
-        def text(key: str) -> str | None:
-            v = o.get(key)
+        def text(v: Any) -> str | None:
             return v.strip() if isinstance(v, str) and v.strip() else None
 
-        opts = BuildOptions(
-            theme=DEFAULT_THEME.resolve(), out_root=root,
-            accept_changes=bool(o.get("accept_changes")), clean=bool(o.get("clean")),
-            title=text("title"), department=text("department"),
-            number=text("number"), version=text("version"),
-            department_name=text("department_name"), cover=text("cover"),
-        )
+        def meta(src: dict[str, Any]) -> dict[str, str]:
+            return {k: v for k in COVER_EDITABLE if (v := text(src.get(k))) is not None}
+
+        entries = body.get("docs")
+        if isinstance(entries, list) and entries:
+            entries = [(d.get("path"), meta(d)) for d in entries if isinstance(d, dict)]
+        else:
+            entries = [(f, meta(o)) for f in body.get("files", [])]
+        entries = [(Path(f).expanduser(), m) for f, m in entries if isinstance(f, str) and f.strip()]
+        if not entries:
+            raise HTTPException(400, "no files given")
+        missing = [str(f) for f, _ in entries if not f.is_file()]
+        if missing:
+            raise HTTPException(400, f"not found: {', '.join(missing)}")
+        bad = [str(f) for f, _ in entries if f.suffix.lower() not in DOC_EXTS]
+        if bad:
+            raise HTTPException(400, f"not a Word document: {', '.join(bad)}")
+        root = Path(o.get("out_root") or out_root).expanduser().resolve()
+        opts = BuildOptions(theme=DEFAULT_THEME.resolve(), out_root=root,
+                            accept_changes=bool(o.get("accept_changes")), clean=bool(o.get("clean")))
         job = Job(id=uuid.uuid4().hex[:10], kind="build",
                   options={"build": {k: (str(v) if isinstance(v, Path) else v) for k, v in asdict(opts).items()}},
-                  docs=[DocTask(source=str(f.resolve()), name=f.stem,
-                                doc_id=registry.id_for(out_dir_for(f.resolve(), root))) for f in files])
+                  docs=[DocTask(source=str(f.resolve()), name=f.stem, meta=m,
+                                doc_id=registry.id_for(out_dir_for(f.resolve(), root))) for f, m in entries])
         runner.submit(job)
         return job.snapshot()
 
@@ -542,6 +548,40 @@ def create_app(*, token: str, out_root: Path, hosts: set[str], edge_cases_dir: P
         media = {".pdf": "application/pdf", ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8",
                  ".log": "text/plain; charset=utf-8", ".json": "application/json"}.get(target.suffix.lower())
         return FileResponse(target, media_type=media, headers={"Cache-Control": "no-cache"})
+
+    def _doc_pdf(doc_id: str, rel: str) -> Path:
+        d = registry.get(doc_id)
+        target = (d / rel).resolve()
+        if d not in target.parents or not target.is_file() or target.suffix.lower() != ".pdf":
+            raise HTTPException(404, "no such PDF")
+        return target
+
+    # ---- side-by-side viewer: word boxes for the whole PDF, page images rendered on demand
+    @app.get("/api/docs/{doc_id}/pages")
+    def api_pages(doc_id: str, file: str) -> dict[str, Any]:
+        try:
+            return preview.pages(_doc_pdf(doc_id, file))
+        except RuntimeError as e:
+            raise HTTPException(500, str(e)) from e
+
+    @app.get("/api/docs/{doc_id}/page")
+    def api_page(doc_id: str, file: str, n: int, dpi: int = preview.DPI) -> Response:
+        if n < 1:
+            raise HTTPException(404, "no such page")
+        try:
+            png = preview.page_png(_doc_pdf(doc_id, file), n, dpi)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        except RuntimeError as e:
+            raise HTTPException(500, str(e)) from e
+        return FileResponse(png, media_type="image/png", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/api/docs/{doc_id}/align")
+    def api_align(doc_id: str, a: str, b: str) -> dict[str, list[int]]:
+        try:
+            return preview.align(_doc_pdf(doc_id, a), _doc_pdf(doc_id, b))
+        except RuntimeError as e:
+            raise HTTPException(500, str(e)) from e
 
     @app.post("/api/quit")
     def api_quit() -> dict[str, Any]:

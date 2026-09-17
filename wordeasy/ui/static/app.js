@@ -5,9 +5,10 @@
   const view = $("#view");
   const CHECK_ORDER = { FAIL: 0, WARN: 1, PASS: 2, SKIP: 3 };
   let STATE = null;          // /api/state
-  let pending = [];          // files chosen for the next build
+  let pending = [];          // documents chosen for the next build: { path, meta: {cover fields} }
+  let lastMeta = {};         // cover fields of the last submitted batch, offered to newly added rows
   let lastForm = null;       // remembered form values
-  let live = null;           // EventSource for the job being watched in the sidebar
+  let live = null;           // EventSource for the job being watched in the top bar
 
   // ---------------------------------------------------------------- helpers
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -27,6 +28,9 @@
     up: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 19V6"/><path d="m6 12 6-6 6 6"/></svg>`,
     file: `<svg viewBox="0 0 24 24" fill="none"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>`,
     brush: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 20c2-1 2.5-3 3-5l9.5-9.5a2.1 2.1 0 0 1 3 3L10 18c-2 .5-4 1-6 2z"/><path d="M14 7l3 3"/></svg>`,
+    menu: `<svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16"/></svg>`,
+    minus: `<svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14"/></svg>`,
+    power: `<svg viewBox="0 0 24 24" fill="none"><path d="M12 3v9"/><path d="M6.3 7.3a8 8 0 1 0 11.4 0"/></svg>`,
   };
 
   async function api(path, opts = {}) {
@@ -56,12 +60,7 @@
   // ---------------------------------------------------------------- navigation
   const NAV = [["home", "#/", "Documents", I.docs], ["new", "#/new", "New build", I.plus], ["template", "#/template", "Template", I.brush]];
   function renderNav(active) {
-    $("#sidenav").innerHTML = NAV.map(([k, h, l, icon]) => `<a class="nav-item ${k === active ? "active" : ""}" href="${h}">${icon}${l}</a>`).join("");
-    $("#mobilenav").innerHTML = NAV.map(([k, h, l, icon]) => `<button class="${k === active ? "active" : ""}" data-go="${h}">${icon}${l}</button>`).join("")
-      + `<button id="mquit">${I.jobs}Quit</button>`;
-    $("#mobilenav").style.gridTemplateColumns = `repeat(${NAV.length + 1}, 1fr)`;
-    $("#mobilenav").querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => (location.hash = b.dataset.go)));
-    $("#mquit").addEventListener("click", quit);
+    $("#topnav").innerHTML = NAV.map(([k, h, l, icon]) => `<a class="nav-item ${k === active ? "active" : ""}" href="${h}" title="${l}">${icon}<span>${l}</span></a>`).join("");
   }
 
   function watchTopbar(jobId) {
@@ -123,50 +122,59 @@
     return `<div class="field"><label>Cover variant</label><select name="cover">${opts.join("")}</select></div>`;
   }
 
+  // Cover fields every document carries on its own; the same keys the Cover tab edits later.
+  const META = [["cover", "Variant"], ["department_name", "Department name"], ["department", "Symbol"], ["number", "Number"], ["title", "Title"], ["version", "Version"]];
+  const metaHint = { department_name: "label above the title", department: "IT", number: "", title: "from the document", version: "V1" };
+
   function renderNew() {
     renderNav("new");
     const f = lastForm || {};
     const field = (name, label, hint = "", value = "") => `<div class="field"><label>${label}${hint ? ` <span class="hint">${hint}</span>` : ""}</label><input type="text" name="${name}" value="${esc(value)}"></div>`;
     view.className = "page";
-    view.innerHTML = pageHead("Pipeline", "New build", "Each Word file becomes one styled PDF plus a report. Any content drift between source and PDF is a FAIL.")
-      + `<div class="grid two">
-        <div class="card"><div class="card-title-row"><h2>Files</h2><button class="btn small" id="browse">${I.folder}Browse…</button></div>
-          <div class="filelist" id="files"></div></div>
-        <div class="card"><div class="card-title-row"><h2>Options</h2></div>
+    view.innerHTML = pageHead("Pipeline", "New build", "Each Word file becomes one styled PDF plus a report, with its own cover data. Any content drift between source and PDF is a FAIL.")
+      + `<div class="card flush"><div class="card-title-row" style="padding:18px 18px 0"><h2>Documents</h2><div class="actions"><button class="btn small" id="copydown" title="Copy the first row's cover fields into every other row">Copy first row to all</button><button class="btn small" id="browse">${I.folder}Add files…</button></div></div>
+          <div class="table-wrap" id="files"></div></div>
+        <div class="card" style="margin-top:14px"><div class="card-title-row"><h2>Options</h2></div>
           <form id="form" autocomplete="off"><div class="fields">
-            ${field("out_root", "Output folder", "", f.out_root || STATE?.out_root || "")}
-            <div class="muted small">Styled with <code>${esc((STATE?.template || "").replace(STATE.repo_root + "/", ""))}</code>. Edit the template, then use “Rebuild &amp; re-verify” on a document to see the change.</div>
+            <div class="two-col">${field("out_root", "Output folder", "", f.out_root || STATE?.out_root || "")}
+            <div class="muted small" style="align-self:end">Styled with <code>${esc((STATE?.template || "").replace(STATE.repo_root + "/", ""))}</code>. Edit the template, then use “Rebuild &amp; re-verify” on a document to see the change.</div></div>
             <label class="check-row"><input type="checkbox" name="accept_changes" ${f.accept_changes ? "checked" : ""}><div>Accept tracked changes <span>— otherwise unresolved changes are a FAIL</span></div></label>
             <label class="check-row"><input type="checkbox" name="clean" ${f.clean ? "checked" : ""}><div>Clean rebuild <span>— delete the document's output folder first</span></div></label>
-            <details class="group" ${f.department_name || f.title || f.number || f.version || f.cover ? "open" : ""}><summary>Cover page</summary>
-              <div class="two-col">${variantSelect(f.cover || "", "previous build, then the theme default")}${field("department_name", "Department name", "label above the title", f.department_name)}${field("number", "Cover number", "", f.number)}${field("title", "Title", "blank: from the document", f.title)}${field("version", "Version", "e.g. V1, MAR 2026", f.version)}</div>
-              <p class="muted small" style="margin-top:12px">Blank fields keep the previous build's answers, then the theme defaults. Values apply to every file in this batch.</p>
-            </details>
-            <details class="group" ${f.department ? "open" : ""}><summary>Department symbol</summary>
-              <div class="two-col">${field("department", "Department symbol", "e.g. IT: footer prefix, big glyph on the cover", f.department)}</div>
-            </details>
             <div class="form-foot"><button class="btn primary" type="submit" id="run">Build</button><span class="muted small" id="runhint"></span></div>
-          </div></form></div>
-      </div>`;
+          </div></form></div>`;
+    const variants = STATE?.cover_variants || [];
+    const cell = (i, k, v) => k === "cover"
+      ? `<select data-i="${i}" data-k="cover"><option value="">theme default</option>${variants.map((o) => `<option value="${esc(o.name)}" ${o.name === v ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select>`
+      : `<input type="text" data-i="${i}" data-k="${k}" value="${esc(v || "")}" placeholder="${esc(metaHint[k] || "")}">`;
     const renderFiles = () => {
       const box = $("#files");
-      box.innerHTML = pending.length ? pending.map((p, i) => `<div class="file-item"><div><strong title="${esc(p)}">${esc(basename(p))}</strong><span>${esc(dirname(p))}</span></div><button class="row-action danger" data-i="${i}" title="Remove">${I.trash}</button></div>`).join("")
-                                     : `<div class="empty">No files yet. Use Browse… to pick Word documents.</div>`;
-      box.querySelectorAll("[data-i]").forEach((b) => b.addEventListener("click", () => { pending.splice(+b.dataset.i, 1); renderFiles(); }));
-      $("#runhint").textContent = pending.length ? `${pending.length} file${pending.length > 1 ? "s" : ""} selected` : "";
+      box.innerHTML = pending.length
+        ? `<table class="doctable"><thead><tr><th>File</th>${META.map(([, l]) => `<th>${l}</th>`).join("")}<th></th></tr></thead><tbody>
+            ${pending.map((d, i) => `<tr><td class="doc-name"><strong title="${esc(d.path)}"><em>${esc(basename(d.path))}</em></strong><span>${esc(dirname(d.path))}</span></td>
+              ${META.map(([k]) => `<td>${cell(i, k, d.meta[k])}</td>`).join("")}
+              <td><button class="row-action danger" data-remove="${i}" title="Remove from this batch">${I.trash}</button></td></tr>`).join("")}</tbody></table>`
+        : `<div class="empty">No documents yet. Use Add files… to pick one or more Word documents; each gets its own row of cover data.</div>`;
+      box.querySelectorAll("[data-remove]").forEach((b) => b.addEventListener("click", () => { pending.splice(+b.dataset.remove, 1); renderFiles(); }));
+      box.querySelectorAll("[data-k]").forEach((el) => el.addEventListener("input", () => { pending[+el.dataset.i].meta[el.dataset.k] = el.value; }));
+      $("#runhint").textContent = pending.length ? `${pending.length} document${pending.length > 1 ? "s" : ""} in this batch` : "";
+      $("#copydown").disabled = pending.length < 2;
     };
     renderFiles();
-    $("#browse").addEventListener("click", () => openBrowser((chosen) => { chosen.forEach((p) => !pending.includes(p) && pending.push(p)); renderFiles(); }));
+    $("#browse").addEventListener("click", () => openBrowser((chosen) => {
+      chosen.forEach((path) => !pending.some((d) => d.path === path) && pending.push({ path, meta: { ...lastMeta } }));
+      renderFiles();
+    }));
+    $("#copydown").addEventListener("click", () => { const first = pending[0]?.meta || {}; pending.forEach((d, i) => { if (i) d.meta = { ...first }; }); renderFiles(); });
     $("#form").addEventListener("submit", async (e) => {
       e.preventDefault();
       if (!pending.length) { toast("Choose at least one Word file", true); return; }
       const fd = new FormData(e.target);
       const options = Object.fromEntries(fd.entries());
       options.accept_changes = fd.has("accept_changes"); options.clean = fd.has("clean");
-      lastForm = options;
+      lastForm = options; lastMeta = { ...pending[0].meta };
       $("#run").disabled = true;
       try {
-        const job = await postJSON("/api/jobs", { files: pending, options });
+        const job = await postJSON("/api/jobs", { docs: pending.map((d) => ({ path: d.path, ...d.meta })), options });
         pending = [];
         watchTopbar(job.id);
         location.hash = `#/job/${job.id}`;
@@ -368,12 +376,153 @@
       </form></div>`;
   }
 
-  // Two PDFs side by side; the iframes get their src only when the tab is first shown.
+  // ---------------------------------------------------------------- side-by-side viewer
+  // Each pane renders its PDF as page images with an invisible, selectable word layer on top
+  // (boxes from pdftotext). The server aligns the two word sequences once, so word i of one
+  // pane maps to its counterpart in the other: selecting anything scrolls the other pane to the
+  // transformed element and highlights it. Pages are rendered on demand as they scroll in.
+
+  class PdfView {
+    constructor(el, docId, rel) {
+      this.el = el; this.docId = docId; this.rel = rel; this.words = []; this.partner = null; this.map = null; this.hits = [];
+      this.zoom = 1; this.dpi = 120;
+      this.status = el.closest(".pane").querySelector(".pane-status");
+      this.zoomLabel = el.closest(".pane").querySelector(".zoom-level");
+      this.ready = this.load().catch((err) => { el.innerHTML = `<div class="nopdf">${esc(err.message)}</div>`; throw err; });
+    }
+    async load() {
+      const q = `file=${encodeURIComponent(this.rel)}`;
+      const data = await api(`/api/docs/${this.docId}/pages?${q}`);
+      const html = [];
+      let i = 0;
+      data.pages.forEach((pg, n) => {
+        const spans = pg.words.map(([x0, y0, x1, y1, t]) => {
+          this.words.push(t.trim()); const k = i++;
+          return `<span data-i="${k}" style="left:${(x0 / pg.w * 100).toFixed(3)}%;top:${(y0 / pg.h * 100).toFixed(3)}%;width:${((x1 - x0) / pg.w * 100).toFixed(3)}%;height:${((y1 - y0) / pg.h * 100).toFixed(3)}%;font-size:${((y1 - y0) / pg.w * 100).toFixed(3)}cqw">${esc(t)}</span>`;
+        }).join(" ");
+        html.push(`<div class="pg" data-n="${n + 1}" style="aspect-ratio:${pg.w} / ${pg.h}"><img alt="page ${n + 1}" draggable="false"><div class="words">${spans}</div></div>`);
+      });
+      this.el.innerHTML = html.join("");
+      this.pages = this.el.querySelectorAll(".pg");
+      this.src = (n) => `/api/docs/${this.docId}/page?${q}&n=${n}&dpi=${this.dpi}`;
+      const io = new IntersectionObserver((entries) => entries.forEach((e) => {
+        if (!e.isIntersecting) return;
+        const img = e.target.querySelector("img");
+        if (!img.src) img.src = this.src(e.target.dataset.n);
+        io.unobserve(e.target);
+      }), { root: this.el, rootMargin: "150% 0px" });
+      this.pages.forEach((pg) => io.observe(pg));
+      this.el.addEventListener("scroll", () => this.showPage(), { passive: true });
+      this.el.addEventListener("wheel", (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        this.setZoom(this.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e);
+      }, { passive: false });
+      const pane = this.el.closest(".pane");
+      pane.querySelector("[data-zoom='in']").addEventListener("click", () => this.setZoom(this.zoom * 1.25));
+      pane.querySelector("[data-zoom='out']").addEventListener("click", () => this.setZoom(this.zoom / 1.25));
+      pane.querySelector("[data-zoom='fit']").addEventListener("click", () => this.setZoom(1));
+      this.el.pdfView = this;
+      this.showPage();
+    }
+    // Zoom relative to the pane width (1 = fit width). Keeps the point under the cursor, or the
+    // middle of the pane, in place; zoomed-in panes swap to sharper renders of the loaded pages.
+    setZoom(z, at) {
+      z = Math.min(4, Math.max(0.5, Math.round(z * 100) / 100));
+      if (z === this.zoom) return;
+      const box = this.el.getBoundingClientRect();
+      const ax = at ? at.clientX - box.left : this.el.clientWidth / 2, ay = at ? at.clientY - box.top : this.el.clientHeight / 2;
+      const ratio = z / this.zoom;
+      const sx = this.el.scrollLeft, sy = this.el.scrollTop;
+      this.zoom = z;
+      this.el.style.setProperty("--zoom", z);
+      this.el.scrollTo({ left: (sx + ax) * ratio - ax, top: (sy + ay) * ratio - ay });
+      this.el.classList.toggle("zoomed", z > 1);
+      if (this.zoomLabel) this.zoomLabel.textContent = `${Math.round(z * 100)}%`;
+      const dpi = z > 1.4 ? 200 : 120;
+      if (dpi !== this.dpi) { this.dpi = dpi; this.el.querySelectorAll("img[src]").forEach((img) => { img.src = this.src(img.closest(".pg").dataset.n); }); }
+      this.showPage();
+    }
+    showPage() {
+      if (!this.status) return;
+      const top = this.el.getBoundingClientRect().top + this.el.clientHeight / 2;
+      let cur = 1;
+      for (const pg of this.pages) { if (pg.getBoundingClientRect().top <= top) cur = +pg.dataset.n; else break; }
+      this.status.textContent = `${cur} / ${this.pages.length}`;
+    }
+    selectedRange() {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+      const range = sel.getRangeAt(0);
+      if (!this.el.contains(range.commonAncestorContainer)) return null;
+      const spans = [...this.el.querySelectorAll(".words span")].filter((sp) => range.intersectsNode(sp));
+      if (!spans.length) return null;
+      return [+spans[0].dataset.i, +spans[spans.length - 1].dataset.i];
+    }
+    onSelect() {
+      const r = this.selectedRange();
+      if (!r || !this.partner || !this.map) return;
+      // First and last selected words that have a counterpart; a selection made only of text the
+      // other side lacks (a running header, a page number) falls back to the nearest mapped word.
+      let j0 = -1, j1 = -1;
+      for (let k = r[0]; k <= r[1] && j0 < 0; k++) j0 = this.map[k];
+      for (let k = r[1]; k >= r[0] && j1 < 0; k--) j1 = this.map[k];
+      if (j0 < 0) {
+        let k = r[0];
+        while (k >= 0 && this.map[k] < 0) k--;
+        if (k < 0) { k = r[1]; while (k < this.map.length && this.map[k] < 0) k++; }
+        if (k < 0 || k >= this.map.length) { this.partner.mark([]); this.partner.note("no counterpart"); return; }
+        j0 = j1 = this.map[k];
+        this.partner.show(j0, j1, "nearest mapped word: the selection has no counterpart");
+        return;
+      }
+      const unmapped = [];
+      for (let k = r[0]; k <= r[1]; k++) if (this.words[k] && this.map[k] < 0) unmapped.push(k);
+      this.partner.show(j0, j1, unmapped.length ? `${unmapped.length} selected word${unmapped.length > 1 ? "s have" : " has"} no counterpart` : "");
+    }
+    // Highlight words j0..j1 and scroll them into the middle of the pane.
+    show(j0, j1, msg) {
+      const spans = [];
+      for (let k = j0; k <= j1; k++) spans.push(this.el.querySelector(`.words span[data-i="${k}"]`));
+      this.mark(spans);
+      this.note(msg);
+      const first = spans[0];
+      if (!first) return;
+      const y = first.getBoundingClientRect().top - this.el.getBoundingClientRect().top + this.el.scrollTop;
+      this.el.scrollTo({ top: Math.max(0, y - this.el.clientHeight / 2), behavior: "smooth" });
+    }
+    mark(spans) { this.hits.forEach((sp) => sp.classList.remove("hit")); this.hits = spans.filter(Boolean); this.hits.forEach((sp) => sp.classList.add("hit")); }
+    note(msg) { const n = this.el.closest(".pane").querySelector(".pane-note"); if (n) { n.textContent = msg; n.hidden = !msg; } }
+  }
+
+  // A drag may end outside the pane it started in, so selections are picked up at document level.
+  const syncSelection = () => document.querySelectorAll(".pdfview").forEach((el) => el.pdfView?.onSelect());
+  document.addEventListener("mouseup", () => setTimeout(syncSelection, 0));
+  document.addEventListener("keyup", (e) => { if (e.shiftKey) syncSelection(); });
+
   function compareHTML(left, right) {
-    const pane = (p) => `<div class="pane"><div class="pane-head"><strong>${esc(p.title)}</strong><span>${esc(p.sub || "")}</span>${p.url ? `<a class="row-action" href="${p.url}" target="_blank" rel="noopener" title="Open in a new tab">${I.open}</a>` : ""}</div>
-      ${p.url ? `<iframe data-src="${p.url}#view=FitH&navpanes=0" title="${esc(p.title)}"></iframe>` : `<div class="nopdf">${p.missing || "No PDF."}</div>`}</div>`;
+    const zoom = `<span class="zoom"><button class="row-action" data-zoom="out" title="Zoom out (Ctrl + wheel)">${I.minus}</button><button class="zoom-level" data-zoom="fit" title="Fit width">100%</button><button class="row-action" data-zoom="in" title="Zoom in (Ctrl + wheel)">${I.plus}</button></span>`;
+    const pane = (p) => `<div class="pane"><div class="pane-head"><strong>${esc(p.title)}</strong><span>${esc(p.sub || "")}</span><em class="pane-note" hidden></em><b class="pane-status"></b>${p.rel ? zoom : ""}${p.url ? `<a class="row-action" href="${p.url}" target="_blank" rel="noopener" title="Open in a new tab">${I.open}</a>` : ""}</div>
+      ${p.rel ? `<div class="pdfview" data-rel="${esc(p.rel)}"><div class="nopdf">Loading…</div></div>` : `<div class="nopdf">${p.missing || "No PDF."}</div>`}</div>`;
     return `<div class="compare">${pane(left)}${pane(right)}</div>`;
   }
+  // Builds the two viewers of a compare block once, the first time its tab is shown, and links them.
+  function mountCompare(sec, docId) {
+    const els = [...sec.querySelectorAll(".pdfview[data-rel]:not([data-mounted])")];
+    if (!els.length) return;
+    const views = els.map((el) => { el.dataset.mounted = "1"; return new PdfView(el, docId, el.dataset.rel); });
+    if (views.length !== 2) return;
+    views[0].partner = views[1]; views[1].partner = views[0];
+    Promise.all(views.map((v) => v.ready))
+      .then(() => api(`/api/docs/${docId}/align?a=${encodeURIComponent(views[0].rel)}&b=${encodeURIComponent(views[1].rel)}`))
+      .then((m) => { views[0].map = m.ab; views[1].map = m.ba; })
+      .catch((err) => views.forEach((v) => v.note(`alignment failed: ${err.message}`)));
+  }
+
+  // The burger menu on document pages (the top bar is hidden there); closes on outside click / Esc.
+  const toggleMenu = (open) => { const m = $("#menu-list"); if (!m) return; m.hidden = !open; $("#menu").setAttribute("aria-expanded", String(open)); };
+  document.addEventListener("click", (e) => { const m = $("#menu-list"); if (m && !m.hidden && !m.contains(e.target)) toggleMenu(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") toggleMenu(false); });
 
   const DOC_TABS = [["live", "Live"], ["lorem", "Lorem"], ["cover", "Cover &amp; metadata"], ["report", "Report"]];
   async function renderDoc(id, tab) {
@@ -388,24 +537,27 @@
     const twinCheck = (r?.checks || []).find((c) => c.name === "lorem_twin");
     if (!DOC_TABS.some(([k]) => k === tab)) tab = "live";
     view.className = "page wide";
-    view.innerHTML = pageHead(doc.anonymized ? "Lorem ipsum twin" : "Document",
-        `${esc(doc.name)} ${chip(doc.status)}${doc.anonymized ? chip("lorem", "lorem ipsum") : ""}`,
-        doc.anonymized ? "Same structure and design, every word, number and image replaced. Verified against the original: safe to share." : `${esc(doc.source)} · built ${esc(fmtTime(doc.generated_at))}`,
-        `${pdfURL ? `<a class="btn" href="${pdfURL}" target="_blank" rel="noopener">${I.open}Open PDF</a>` : ""}
+    view.innerHTML = `<div class="page-head compact"><div class="doc-line"><span class="eyebrow">${doc.anonymized ? "Lorem ipsum twin" : "Document"}</span>
+        <h1>${esc(doc.name)} ${chip(doc.status)}${doc.anonymized ? chip("lorem", "lorem ipsum") : ""}</h1>
+        <p>${doc.anonymized ? "Same structure and design, every word, number and image replaced. Verified against the original: safe to share." : `built ${esc(fmtTime(doc.generated_at))}`}</p></div><div class="actions">
+        ${pdfURL ? `<a class="btn" href="${pdfURL}" target="_blank" rel="noopener">${I.open}Open PDF</a>` : ""}
          <button class="btn primary" id="reverify" title="Recompile the PDF (and the lorem twin) with the current template and run every check again">Rebuild &amp; re-verify</button>
-         <button class="btn icon danger" id="delete" title="Delete this output folder">${I.trash}</button>`)
+         <div class="menu-wrap"><button class="btn icon" id="menu" title="Menu" aria-haspopup="true" aria-expanded="false">${I.menu}</button>
+           <div class="menu" id="menu-list" hidden>${NAV.map(([, h, l, icon]) => `<a class="nav-item" href="${h}">${icon}<span>${l}</span></a>`).join("")}
+             <div class="menu-sep"></div><button class="nav-item" id="menu-quit" title="Stop the local server">${I.power}<span>Quit</span></button>
+             <div class="menu-foot"><span class="dot"></span>Local only · <code>${esc(location.host)}</code></div></div></div></div></div>`
       + `<div class="tabs" role="tablist">${DOC_TABS.map(([k, l]) => `<button role="tab" class="tab ${k === tab ? "active" : ""}" data-tab="${k}">${l}${k === "lorem" && twin ? chip(twin.status) : ""}${k === "report" && r ? `<span class="count">${checks.filter((c) => c.status !== "PASS").length || ""}</span>` : ""}</button>`).join("")}</div>`
       + `<section class="tabbody" data-tab="live" ${tab === "live" ? "" : "hidden"}>${compareHTML(
-            { title: "Original", sub: "the Word file as LibreOffice renders it", url: file(doc.original_pdf), missing: "No original.pdf: LibreOffice was not found at build time. Install it and rebuild." },
-            { title: "Generated", sub: "styled through the template", url: pdfURL, missing: "No PDF: the render failed. See the report." })}</section>`
+            { title: "Original", sub: "the Word file as LibreOffice renders it", url: file(doc.original_pdf), rel: doc.original_pdf, missing: "No original.pdf: LibreOffice was not found at build time. Install it and rebuild." },
+            { title: "Generated", sub: "styled through the template", url: pdfURL, rel: doc.pdf, missing: "No PDF: the render failed. See the report." })}</section>`
       + `<section class="tabbody" data-tab="lorem" ${tab === "lorem" ? "" : "hidden"}>
           ${doc.anonymized ? `<div class="card empty">This document is itself a lorem ipsum twin.</div>`
             : `<div class="tabnote">${twin ? `${chip(twin.status)}<span class="note">${esc(twinCheck?.summary || "Lorem ipsum twin: same structure and design, no real data.")}</span>` : `${chip("WARN", "missing")}<span class="note">${esc(twinCheck?.summary || "No lorem twin has been built for this document yet.")}</span>`}
               <button class="btn small ${twin ? "" : "primary"}" id="anonymize" title="Build the twin again: every word, number and image replaced, verified to contain no word of the original">${twin ? "Rebuild twin" : "Build twin"}</button>
               <button class="btn small" id="edgecase" ${twin && !doc.state?.edge_case ? "" : "disabled"} title="Copy the twin's Word file into the code repository's tests/fixtures/edge-cases/ so the developers can reproduce and fix this case without ever seeing the document">${doc.state?.edge_case ? `Forwarded as ${esc(doc.state.edge_case)}` : "Add to edge cases"}</button></div>`
             + compareHTML(
-              { title: "Lorem original", sub: "the anonymised Word file as LibreOffice renders it", url: file(twin?.original_pdf), missing: twin ? "No lorem/original.pdf: LibreOffice was not found at build time." : "No twin yet." },
-              { title: "Lorem generated", sub: "the anonymised file styled through the template", url: file(twin?.pdf), missing: twin ? "No PDF: the twin's render failed." : "No twin yet." })}</section>`
+              { title: "Lorem original", sub: "the anonymised Word file as LibreOffice renders it", url: file(twin?.original_pdf), rel: twin?.original_pdf, missing: twin ? "No lorem/original.pdf: LibreOffice was not found at build time." : "No twin yet." },
+              { title: "Lorem generated", sub: "the anonymised file styled through the template", url: file(twin?.pdf), rel: twin?.pdf, missing: twin ? "No PDF: the twin's render failed." : "No twin yet." })}</section>`
       + `<section class="tabbody" data-tab="cover" ${tab === "cover" ? "" : "hidden"}><div class="split">${coverHTML(doc.state || {})}
           <div class="pdfpane">${pdfURL ? `<iframe data-src="${pdfURL}#page=1&view=Fit&navpanes=0" title="Cover"></iframe>` : `<div class="nopdf">No PDF: the render failed. See the report.</div>`}</div></div></section>`
       + `<section class="tabbody" data-tab="report" ${tab === "report" ? "" : "hidden"}><div class="report">${r ? `${checks.map(checkHTML).join("")}<div style="height:6px"></div>${infoHTML(r.info || {}, doc.state)}` : `<div class="card empty">No report yet.</div>`}</div></section>`;
@@ -414,7 +566,7 @@
       view.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === k));
       view.querySelectorAll(".tabbody").forEach((sec) => {
         sec.hidden = sec.dataset.tab !== k;
-        if (!sec.hidden) sec.querySelectorAll("iframe[data-src]").forEach((f) => { f.src = f.dataset.src; f.removeAttribute("data-src"); });
+        if (!sec.hidden) { sec.querySelectorAll("iframe[data-src]").forEach((f) => { f.src = f.dataset.src; f.removeAttribute("data-src"); }); mountCompare(sec, id); }
       });
       const h = `#/doc/${id}${k === "live" ? "" : "/" + k}`;
       if (location.hash !== h) history.replaceState(null, "", h);
@@ -422,8 +574,9 @@
     view.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
     showTab(tab);
 
+    $("#menu").addEventListener("click", (e) => { e.stopPropagation(); toggleMenu($("#menu-list").hidden); });
+    $("#menu-quit").addEventListener("click", quit);
     $("#reverify").addEventListener("click", () => startVerify(id));
-    $("#delete").addEventListener("click", async () => { if (await deleteDoc(id, doc.name)) location.hash = "#/"; });
     $("#edgecase")?.addEventListener("click", () => openEdgeCaseDialog(id));
     $("#anonymize")?.addEventListener("click", async () => {
       $("#anonymize").disabled = true;
@@ -468,8 +621,9 @@
   }
   async function route() {
     const h = location.hash || "#/";
+    document.body.classList.toggle("no-topbar", h.startsWith("#/doc/"));
     try {
-      if (!STATE) { STATE = await api("/api/state"); $("#side-host").textContent = location.host; }
+      if (!STATE) { STATE = await api("/api/state"); $("#top-host").textContent = location.host; }
       let m;
       if (h === "#/") await renderHome();
       else if (h === "#/new") renderNew();
