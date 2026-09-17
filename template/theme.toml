@@ -142,6 +142,9 @@ separator_direction = "horizontal"   # "horizontal": a line under every row, non
 default_fill = "#F7F7F7"       # background of cells that have no colour in Word
 default_text = "#404040"       # text colour on the default background
 colored_text = "#FFFFFF"       # text colour on cells that carry a Word colour
+min_contrast = 1.5             # a Word colour is darkened (lightened under dark text) until the text reaches this
+                               # WCAG contrast ratio. Higher = darker cells: 1.5 barely touches pastels, 2.0 keeps
+                               # yellow yellow, 3.0 = WCAG large-text minimum, 4.5 = body text; 0 keeps every colour as is
 header_bold = false            # true: force the first row bold; false: bold only where the Word text is bold
 repeat_header_rows = false     # pandoc treats the first row of every Word table as a header; true would repeat it on each page the table spans
 

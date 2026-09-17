@@ -243,20 +243,48 @@
     let v = grid-at(n, "fills", x, y)
     if v != none and upper(v) != upper(t.tables.default_fill) { v } else { none }
   }
-  // Rendered background: the rule's fill if any, else the Word colour, else none.
-  let cell-fill(n, x, y) = {
-    let v = word-fill(n, x, y)
-    if v == none { none } else {
-      let r = rule-for(v)
-      if r != none and "fill" in r { _color(t, r.fill) } else { rgb(v) }
-    }
-  }
   // Rendered text colour: the rule's text if any, else colored/default text.
   let cell-text(n, x, y) = {
     let v = word-fill(n, x, y)
     if v == none { _color(t, t.tables.default_text) } else {
       let r = rule-for(v)
       if r != none and "text" in r { _color(t, r.text) } else { _color(t, t.tables.colored_text) }
+    }
+  }
+  // WCAG relative luminance and contrast ratio (1 = same, 21 = black on white).
+  let luminance(c) = {
+    let lin(v) = { let v = v / 100%; if v <= 0.03928 { v / 12.92 } else { calc.pow((v + 0.055) / 1.055, 2.4) } }
+    let (r, g, b) = c.rgb().components(alpha: false)
+    0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+  }
+  let contrast(a, b) = {
+    let (la, lb) = (luminance(a), luminance(b))
+    (calc.max(la, lb) + 0.05) / (calc.min(la, lb) + 0.05)
+  }
+  // A Word colour too close to the text colour (yellow under white text) is
+  // pushed away from it until the contrast is reached: darker under light text,
+  // lighter under dark text. Only the HSL lightness moves, in 5% steps; hue and
+  // saturation stay, so a pale yellow becomes a deep yellow, not a grey.
+  let min-contrast = float(t.tables.at("min_contrast", default: 1.5))
+  let readable-fill(bg, fg) = {
+    let (h, s, l) = bg.hsl().components(alpha: false)
+    let step = if luminance(fg) > luminance(bg) { -5% } else { 5% }
+    let c = bg
+    let i = 0
+    while contrast(c, fg) < min-contrast and i < 20 {
+      i += 1
+      c = color.hsl(h, s, calc.max(0%, calc.min(100%, l + i * step)))
+    }
+    c
+  }
+  // Rendered background: the rule's fill if any, else the Word colour (adjusted
+  // for contrast with the text), else none.
+  let cell-fill(n, x, y) = {
+    let v = word-fill(n, x, y)
+    if v == none { none } else {
+      let r = rule-for(v)
+      let bg = if r != none and "fill" in r { _color(t, r.fill) } else { rgb(v) }
+      readable-fill(bg, cell-text(n, x, y))
     }
   }
   let h-align = (left: left, center: center, right: right).at(t.tables.at("align", default: "left"), default: left)
@@ -275,9 +303,20 @@
     let dir = t.tables.at("separator_direction", default: "horizontal")
     // Each cell draws its bottom and/or right edge: a line under every row (including
     // the last) but none above the first row; likewise none left of the first column.
-    if dir == "horizontal" { (x: none, top: none, bottom: line) }
-    else if dir == "vertical" { (y: none, left: none, right: line) }
-    else { (top: none, left: none, bottom: line, right: line) }
+    (
+      top: none, left: none,
+      bottom: if dir == "vertical" { none } else { line },
+      right: if dir == "horizontal" { none } else { line },
+    )
+  }
+  // A cell next to a vertically merged cell it does not share rows with (or a
+  // merged cell next to single cells) also draws its left edge, so the row lines
+  // that stop at the merged cell end on a stroke instead of in the open.
+  let merge-edge(n, x, y) = x > 0 and grid-at(n, "rows", x - 1, y) != grid-at(n, "rows", x, y)
+  let cell-stroke(n, x, y) = {
+    if separator == none { none }
+    else if merge-edge(n, x, y) { separator + (left: separator-line) }
+    else { separator }
   }
   set table(
     stroke: separator,
@@ -306,6 +345,7 @@
       set table(
         fill: (x, y) => { let c = cell-fill(n, x, y); if c == none { default-fill } else { c } },
         align: (x, y) => cell-align(n, x, y),
+        stroke: (x, y) => cell-stroke(n, x, y),
       )
       it
     }
