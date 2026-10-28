@@ -1,0 +1,10 @@
+.tools/
+out/
+samples/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/fixtures/_build/
+fonts/*.zip
+.claude/settings.local.json

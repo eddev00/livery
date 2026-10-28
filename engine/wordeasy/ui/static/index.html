@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anti-Rdiim</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/"><span class="brand-mark">AR</span><span>Anti-Rdiim</span></a>
+  <nav class="topnav" id="topnav"></nav>
+  <div class="top-right">
+    <span id="activity" class="activity" hidden></span>
+    <div class="top-status" title="Bound to loopback only"><span class="dot"></span><div><strong>Local only</strong><span id="top-host">127.0.0.1</span></div></div>
+    <button class="nav-item" id="quit" title="Stop the local server"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v9"/><path d="M6.3 7.3a8 8 0 1 0 11.4 0"/></svg><span>Quit</span></button>
+  </div>
+</header>
+<main class="main"><div id="view" class="page"></div></main>
+<div id="modal" class="modal" hidden></div>
+<div id="toast" class="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>
