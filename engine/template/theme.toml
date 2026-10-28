@@ -1,0 +1,299 @@
+# wordeasy theme — every visual decision lives here. Content is never affected.
+# Lengths are Typst length strings ("2.5cm", "11pt", "0.7em"); colors are hex.
+
+[document]
+department = "IT"              # department symbol: bold prefix in the footer and the big label on the cover; --department per build
+department_name = "Information Technology"   # full name: label above the title and under the symbol on the cover; --department-name per build
+version = ""                   # e.g. "V1, MAR 2026"; asked per document at build time (--version)
+
+[page]
+paper = "a4"
+margin_top = "3cm"
+margin_bottom = "2.5cm"
+margin_left = "2.5cm"
+margin_right = "2.5cm"
+running_header = true          # "SECTION 02 Chapter title" on chapter pages only (none on cover, contents, separator pages)
+page_numbers = true            # footer: document title on the left, page number on the right
+footer_side_margin = "1cm"     # footer spans from this distance off the left page edge to the same off the right edge
+header_side_margin = "1cm"     # same for the running header
+header_rule = false            # thin line under the running header
+number_format = "1"            # Typst numbering pattern for the page number ("1 / 1" for "3 / 42")
+
+[fonts]
+body = "Dubai"                 # files in template/assets/fonts are found automatically
+heading = "Dubai"
+mono = "DejaVu Sans Mono"
+mono_size = "9pt"
+
+# ---- text styles. Colors are hex or the name of a [colors] entry. Weight is
+# "regular" | "medium" | "bold" (or a number 100-900). Word "Single" line
+# spacing ≈ leading 0.65em; spacing before/after are Word's paragraph values.
+[text.body]
+size = "11pt"
+weight = "regular"
+color = "#404040"
+leading = "0.65em"
+space_before = "0pt"
+space_after = "3pt"
+
+[text.list]
+size = "11pt"
+weight = "regular"
+color = "#404040"
+leading = "0.65em"
+space_after = "2pt"            # between items
+marker_shape = "square"        # "square" (drawn, no font glyph needed) or any text such as "•"
+marker_size = "0.36em"
+marker_colors = ["brand_red", "#000000", "#000000"]   # level 1, level 2, deeper
+marker_gap = "1em"           # space between the bullet and its text
+indent = "1em"                 # indent of the bullet from the left margin (adds up per nesting level)
+
+[text.header]                  # running header and footer
+size = "9pt"
+weight = "medium"
+color = "#404040"
+
+[text.h1]                      # Chapter
+size = "18pt"
+weight = "bold"
+color = "brand_red"
+space_before = "24pt"
+space_after = "12pt"
+
+[text.h2]                      # first level under a section
+size = "14pt"
+weight = "bold"
+color = "#D9222A"
+space_before = "18pt"
+space_after = "6pt"
+
+[text.h3]                      # Subsection
+size = "12pt"
+weight = "bold"
+color = "#202020"
+space_before = "12pt"
+space_after = "3pt"
+
+[text.h4]                      # Sub-subsection
+size = "11pt"
+weight = "medium"
+color = "#303030"
+space_before = "9pt"
+space_after = "3pt"
+
+[colors]
+brand_red = "#ED1C24"          # ASSUMPTION: the document palette lists #62191C, #BC1C20, #ED1C24; adjust
+accent = "#1F4E79"             # chapter pages, table headers, links, rules
+accent_soft = "#DCE6F1"        # zebra rows, quote background
+text = "#1A1A1A"
+muted = "#666666"
+rule = "#BFBFBF"
+
+[typography]
+lang = "en"
+justify = false
+first_line_indent = "0pt"
+hyphenate = true
+ligatures = true
+
+[headings]
+numbering = "1.1."             # "" disables numbering; pattern for the numbered levels ("1.1." -> 1., 1.1., 1.1.1.)
+numbering_depth = 3            # deeper headings stay unnumbered (avoids 1.3.0.1 when a level is skipped)
+include_chapter_number = false # false: headings inside a chapter restart at 1. and omit the chapter number
+chapter_label = "Section"      # "SECTION 02" on the chapter page and in the running header
+chapter_number_format = "01"   # Typst numbering pattern for the chapter number ("1" for no zero padding)
+
+[chapter_page]
+enabled = true                 # every level-1 heading opens a separator page
+fill = ""                      # background colour of the section cover ("" for a white page)
+band = false                   # coloured vertical band on the left edge (only when fill = "")
+number_size = "126pt"
+number_font = "29LT Bukra"     # 29LT Bukra Condensed SemiBold
+number_weight = 600
+number_stretch = "75%"
+title_size = "40pt"
+title_font = "Dubai"
+number_title_gap = "-2.2em"
+block_bottom = "3cm"           # the number + title block sits this far above the page bottom (footer excluded)    # space between the number and the title (negative tightens; the number's glyph box has room below it)
+number_color = "brand_red"     # the number uses the same colour as the section title (h1 color)
+title_color = "brand_red"
+background = "assets/chapter-background.png"   # "" for none; path relative to the template folder
+background_height = "33cm"     # image height; width follows the image's aspect ratio (use background_width instead to size by width)
+background_center_x = "0%"     # horizontal position of the image's centre, measured from the left page edge
+background_bottom = "20%"      # distance from the page bottom up to the image's bottom edge (the image extends upward)
+
+[tables]
+# Structure, inline text styles (bold/italic) and cell background colours come
+# from the Word document. The template changes the font, removes all strokes and
+# gives every unshaded cell a light background.
+# "fill": Word's column proportions stretched to the full text width (default).
+# "auto": Typst sizes columns to their content (table may be narrower than the text).
+# "word": Word's column widths as percentages of the text width.
+column_widths = "fill"
+font_size = "10pt"
+inset = "5pt"                  # left/right padding inside cells
+inset_top = "16pt"              # top and bottom padding inside cells
+inset_bottom = "16pt"
+align = "left"                 # "left" | "center" | "right": every cell; "word" keeps Word's per-cell alignment
+valign = "word"                # "word": each cell's vertical alignment from Word; or "top" | "center" | "bottom"
+separator_color = "#BFBFBF"    # "" for no lines between cells; otherwise the colour of the separator lines
+separator_width = "0.5pt"
+separator_direction = "horizontal"   # "horizontal": a line under every row, none above the first; "vertical": right of every column; "both"
+default_fill = "#F7F7F7"       # background of cells that have no colour in Word
+default_text = "#404040"       # text colour on the default background
+colored_text = "#FFFFFF"       # text colour on cells that carry a Word colour
+min_contrast = 1.5             # a Word colour is darkened (lightened under dark text) until the text reaches this
+                               # WCAG contrast ratio. Higher = darker cells: 1.5 barely touches pastels, 2.0 keeps
+                               # yellow yellow, 3.0 = WCAG large-text minimum, 4.5 = body text; 0 keeps every colour as is
+header_bold = false            # true: force the first row bold; false: bold only where the Word text is bold
+repeat_header_rows = false     # pandoc treats the first row of every Word table as a header; true would repeat it on each page the table spans
+
+caption_position = "top"
+
+# Cell rules, applied by the cell's background colour in the Word document
+# (matched case-insensitively). Add one [[tables.cell_rules]] block per rule:
+#   word_fill = the colour found in Word
+#   fill      = background to render (omit to keep the Word colour)
+#   text      = text colour to render (omit to keep the default for coloured cells)
+# Cells with no matching rule follow default_fill/default_text/colored_text above.
+[[tables.cell_rules]]
+word_fill = "#D9D9D9"
+fill = "#D9D9D9"
+text = "#000000"
+
+[[tables.cell_rules]]
+word_fill = "#F2F2F2"
+text = "#000000"
+
+[figures]
+# Images keep the width they have in Word (relative to the text width) and are
+# centred; a Word "Caption" paragraph under an image becomes its centred label.
+caption_position = "bottom"
+caption_size = "10pt"
+caption_color = "#404040"
+max_width = "100%"
+
+[cover]
+enabled = true
+variant = "small"              # default cover variant: a [cover.variants.<name>] table below; chosen per document (--cover, or in the UI)
+background = ""                # full-bleed image, path relative to the template folder ("" for none); variants set their own
+background_bleed = "2.86%"     # the image is drawn this much larger than the page and centred, so soft image edges never show
+                               # 2.86% of the A4 width = 6mm, i.e. a 3mm bleed on the left and right (4.2mm top and bottom)
+logo = ""                      # path relative to the template folder, e.g. "assets/logo.png"
+# The label above the title in the red band is the department name ([document]
+# department_name, --department-name per build); it uses the dept_text_* style below.
+label_gap = "0.67cm"           # distance from the label's baseline to the top of the title's capitals
+subtitle = ""
+title_font = "Dubai"
+title_size = "28pt"
+title_line_height = "38pt"
+title_weight = "bold"
+title_color = "#FFFFFFCC"      # white at 80% opacity
+title_top = "40%"              # top of the title block, as a share of the page height (the red band)
+title_left = "1.68cm"
+title_width = "70%"
+number = "01"                  # the big number in the bottom-right corner; override per build with --number
+number_font = "29LT Bukra"     # 29LT Bukra Condensed SemiBold (template/assets/fonts/29LTBukraCd-SmBd.otf)
+number_weight = 600
+number_stretch = "75%"
+number_size = "388pt"
+number_color_start = "#FFFFFF99"   # gradient start stop (white at 60%) ...
+number_color_end = "#ffffff0f"     # ... to end stop (white at 2%); set both to the same value for a flat colour
+number_gradient_angle = "250deg"   # direction of the gradient: 300deg runs from the bottom-left toward the top-right, steeper than the diagonal
+                                   # (0deg left->right, 90deg top->bottom, 180deg right->left, 270deg bottom->top)
+number_inset_right = "0cm"       # distance from the page's right edge to the ink of the last digit
+number_inset_bottom = "-1.4cm"    # 20px at 96 dpi; negative pushes the number below the page edge
+footer = false                 # the big number occupies the corner where the page number would go
+# Department block, bottom-left inside the page margins: symbol on one line,
+# then department name (wrapping in a fixed-width column) with the version beside it.
+dept_left = "1.7cm"           # distance of the department block from the left page edge
+dept_bottom = "2.3cm"         # distance from the bottom page edge
+dept_symbol_size = "78pt"
+dept_symbol_font = "29LT Bukra"    # 29LT Bukra Condensed SemiBold (no Condensed Bold file exists; 600 at 75% is the heaviest condensed weight)
+dept_symbol_weight = 600
+dept_symbol_stretch = "75%"
+dept_symbol_gap = "1cm"          # space between the symbol and the department name below it
+dept_text_size = "14pt"          # department name and version
+dept_text_line_height = "21pt"
+dept_text_font = "Dubai"
+dept_text_weight = "bold"
+dept_text_uppercase = true
+dept_text_color = "#FFFFFF66"    # white at 40% opacity (defaults to dept_color)
+dept_name_width = "3.15cm"
+dept_gap = "1cm"               # space between the department name column and the version
+dept_color = "#B3B3B3"
+dept_symbol_color = "#FFFFFF66"   # the symbol only: white at 40% opacity (defaults to dept_color)
+
+# Cover variants: each table overrides any [cover] key above for documents built
+# with that variant. `description` is shown next to the name when choosing.
+[cover.variants.small]
+description = "short red band"
+background = "assets/cover-small.png"
+
+[cover.variants.large]
+description = "tall red band, room for a longer title"
+background = "assets/cover-large.png"
+
+# Right side bearing of each digit in the number font, in em (from the font's
+# metrics). The template shifts the number right by the bearing of its last
+# digit so the ink, not the glyph box, touches the edge.
+[cover.number_right_bearing]
+"0" = 0.038
+"1" = 0.072
+"2" = 0.032
+"3" = 0.038
+"4" = 0.024
+"5" = 0.054
+"6" = 0.038
+"7" = 0.035
+"8" = 0.038
+"9" = 0.038
+
+[toc]
+enabled = true
+title = "Table of Content"
+title_size = "40pt"
+title_font = "Dubai"
+title_color = "brand_red"      # same red as the section titles
+section_color = "brand_red"    # colour of the level-1 (section) entries
+level2_color = "#000000"       # colour of the entries directly under a section
+deeper_color = "#404040"       # colour of every deeper entry
+leader_section = "."           # repeated between a section entry and its page number
+leader_other = "-"             # repeated for every other entry
+depth = 3
+
+[source]
+# Text width of the incoming Word documents (page width minus margins), used to
+# scale images proportionally. Word default A4 with 2.5cm margins ≈ 6.3in.
+text_width_in = 6.3
+# Word paragraph styles that are dropped because the template regenerates them
+# (Word's own table of contents). Matched case-insensitively; "toc N" always matches.
+# Dropped paragraphs are listed in report.md under "dropped by design".
+drop_styles = ["TOC Heading", "Table of Contents Heading", "toc heading"]
+# Headings with exactly this text (case-insensitive) are dropped for the same reason:
+# Word's "TOC Heading" style derives from Heading 1 and arrives as a real heading.
+drop_headings = ["Table of Contents", "Contents", "Table des matières", "Sommaire"]
+# pandoc turns every indented, non-list Word paragraph into a block quote.
+# "unwrap": render them as ordinary paragraphs (default); "keep": style them as quotes.
+block_quotes = "unwrap"
+# Word lets a Normal paragraph carry an "outline level" (bold titles set to show in
+# the navigation pane); pandoc would turn those into headings. false: only real
+# Heading styles become headings, such paragraphs stay as they are.
+outline_level_headings = false
+# Numbers typed into heading text ("1. Intro", "2.1. Pages") define the structure:
+# the depth of the number gives the level and the number itself is removed, Typst
+# regenerates it. A heading introduced by a chapter word ("Section 01. Layout")
+# declares a chapter explicitly; plain numbers then sit one level below it.
+# Regenerated numbers are compared with the typed ones and mismatches reported.
+# "keep" leaves heading text and levels exactly as in Word.
+heading_numbers = "parse"          # "parse" | "keep"
+chapter_words = ["Section", "Chapter", "Chapitre", "Part", "Partie"]
+
+[style_map]
+# Word paragraph style name -> heading level. Built-in "Heading N" is always mapped.
+"Chapter Title" = 1
+"Heading 1 for TOC" = 1
+"Title 1" = 1
+"Titre 1" = 1
+"Titre 2" = 2
+"Titre 3" = 3
