@@ -119,6 +119,11 @@ end-to-end smoke test and exits (add `LIVERY_SMOKE_AGENT=fake` for the agent loo
 `LIVERY_SMOKE_SIZE=1920x1080` to set the screenshot size, whatever your monitor). The
 screenshots in this README come from that run.
 
+## Contact
+
+Questions, bug reports and feature requests: [GitHub Issues](https://github.com/eddev00/livery/issues),
+or email [eddevjo@gmail.com](mailto:eddevjo@gmail.com).
+
 ## License
 
 Copyright (C) 2026 eddev00
