@@ -7,11 +7,11 @@ Behaviour, from the prompt (stdin):
   contains "PROBE"       tries to escape the sandbox; reports what it could reach as JSON
   contains "MAPPING"     writes everything after the word "MAPPING" to design/mapping.toml,
                          runs render-preview and reports its result as JSON
-  names references/…     checks each named reference image is a PNG it can read and says so
   otherwise              edits design/design.json: a "Fake table" treatment with the first
                          #RRGGBB colour of the prompt as header fill, assigned to every attached
                          table, and an override with that colour for attached headings; then
-                         runs render-preview and reports its result
+                         runs render-preview and reports its result, plus whether each
+                         reference image the prompt names is a PNG it can read
 Every prompt it receives is appended to /work/.fake-log so tests can inspect it.
 """
 from __future__ import annotations

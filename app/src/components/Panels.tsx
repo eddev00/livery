@@ -84,7 +84,7 @@ export function ProjectTree({ projects, current, currentDoc, docsOf, expanded, o
                         <button aria-label={d.review?.state === "open" ? `Mark ${d.name} done` : `Mark ${d.name} not done`}
                           title={d.review?.state === "open" ? "Mark done" : "Mark not done"}
                           disabled={d.review?.state === "open" && (st.cls === "BUSY" || st.cls === "FAIL")}
-                          onClick={(e) => { e.stopPropagation(); onToggleDone(p.id, d); }}>✓</button>
+                          onClick={(e) => { e.stopPropagation(); onToggleDone(p.id, d); }}>{d.review?.state === "open" ? "✓" : "↩"}</button>
                         <button aria-label={`Export ${d.name} as PDF`} title="Export PDF…" disabled={st.cls === "BUSY" || st.cls === "FAIL"}
                           onClick={(e) => { e.stopPropagation(); onExportDoc(p.id, d); }}>⤓</button>
                         <button aria-label={`Replace ${d.name}`} title="Replace with a new version"

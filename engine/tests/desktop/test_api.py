@@ -1,6 +1,7 @@
 """The local API: authentication, host check, private endpoints, and the egress proxy."""
 from __future__ import annotations
 
+import base64
 import socket
 import threading
 
@@ -51,6 +52,16 @@ def test_unmapped_or_unsupported_elements_cannot_be_attached(client, project):
     r = client.post(f"/api/projects/{project.id}/chat/fake/messages", headers=auth(),
                     json={"text": "style", "selections": [{"doc": doc, "element": "t9999"}]})
     assert r.status_code == 409
+
+
+def test_images_must_be_real_images(client, project):
+    url = f"/api/projects/{project.id}/chat/fake/messages"
+    r = client.post(url, headers=auth(), json={"text": "like this", "images": ["%%%"]})
+    assert r.status_code == 400 and "base64" in r.json()["detail"]
+    r = client.post(url, headers=auth(), json={"text": "like this", "images": [base64.b64encode(b"%PDF-1.7").decode()]})
+    assert r.status_code == 400 and r.json()["detail"].startswith("image 1:")
+    r = client.post(url, headers=auth(), json={"text": "like this", "images": ["AA=="] * 5})
+    assert r.status_code == 400 and "at most 4" in r.json()["detail"]
 
 
 def test_unknown_project_is_404(client):

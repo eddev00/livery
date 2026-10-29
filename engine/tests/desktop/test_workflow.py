@@ -28,12 +28,12 @@ def _wait_jobs(queued):
             pass
 
 
-def _turn(project, provider, text, selections, timeout=240):
+def _turn(project, provider, text, selections, timeout=240, images=()):
     """Send one message and collect the agent events until the turn is processed."""
     q = events.subscribe(project.id)
     try:
         conv = conversation.get(project, provider)
-        conv.send(text, selections)
+        conv.send(text, selections, list(images))
         got = []
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -230,6 +230,51 @@ def test_fake_agent_edits_a_table_through_a_proposal(project):
     rev = proposals.accept(project, pid)["revision"]
     assert project.design(rev).design["assignments"][ref] == "Fake table"
     assert meta["focus"] == [project.ids["report"]]
+
+
+def _photo(width=3000, height=1500):
+    """A JPEG with EXIF (camera and author) as a phone or a screenshot tool would save it."""
+    import io
+    from PIL import Image
+    im = Image.new("RGB", (width, height), "#1F3A5F")
+    exif = Image.Exif()
+    exif[0x010F] = "PhoneMaker"  # Make
+    exif[0x013B] = SENTINEL      # Artist
+    out = io.BytesIO()
+    im.save(out, format="JPEG", exif=exif)
+    return out.getvalue()
+
+
+def test_reference_images_are_reencoded_without_metadata():
+    import io
+    from PIL import Image
+    from livery.desktop.workspace import normalize_reference
+    png = normalize_reference(_photo())
+    assert png.startswith(b"\x89PNG") and SENTINEL.encode() not in png and b"PhoneMaker" not in png
+    with Image.open(io.BytesIO(png)) as im:
+        assert im.size == (2000, 1000) and not im.getexif()
+    for bad in (b"not an image", b"%PDF-1.7 ...", b"GIF89a"):
+        with pytest.raises(ValueError):
+            normalize_reference(bad)
+
+
+def test_reference_images_reach_the_agent(project):
+    """An attached image lands in the workspace as a clean PNG, is named in the prompt and
+    can be read by the agent in its sandbox; later images are numbered on."""
+    from livery.desktop.workspace import normalize_reference
+    _ensure_accepted_rendered(project)
+    sel = [_selection(project, "report", "t0006")]
+    got = _turn(project, "fake", "Make all tables look like this #224466", sel, images=[normalize_reference(_photo())])
+    said = " ".join(e["text"] for e in got if e["type"] == "text")
+    assert "Looked at references/ref-01.png:png" in said, said
+    got = _turn(project, "fake", "And this one", sel, images=[normalize_reference(_photo(400, 300))])
+    said = " ".join(e["text"] for e in got if e["type"] == "text")
+    assert "references/ref-02.png:png" in said, said
+    ws = conversation.active(project).ws
+    assert sorted(f.name for f in (ws / "references").iterdir()) == ["ref-01.png", "ref-02.png"]
+    assert SENTINEL.encode() not in (ws / "references" / "ref-01.png").read_bytes()
+    hist = conversation.history(project, "fake")
+    assert [e.get("attachments") for e in hist if e["role"] == "user"][-1] == [sel[0]["label"], "Image 2"]
 
 
 def test_private_content_never_reaches_the_agent(project):

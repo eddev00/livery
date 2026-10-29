@@ -62,5 +62,11 @@ export interface AgentStatus {
 }
 export interface LoginHelp { provider: string; connect: boolean; secrets: { name: string; label: string }[] }
 export interface Selection { doc: string; element: string; label: string; kind: string }
-export interface ChatEntry { role: "user" | "agent" | "activity" | "error" | "approval" | "notice"; text: string; ts?: string; attachments?: string[]; id?: string; kind?: string }
+export interface ChatEntry {
+  role: "user" | "agent" | "activity" | "error" | "approval" | "notice"; text: string; ts?: string; attachments?: string[];
+  /** thumbnails of the reference images sent with the message; only for this session */
+  images?: string[]; id?: string; kind?: string;
+}
+/** A reference image attached in the composer: `url` for the thumbnail, `data` (base64 PNG) for the engine. */
+export interface RefImage { id: string; url: string; data: string }
 export interface Job { id: string; kind: string; state: "queued" | "running" | "done" | "failed"; message: string; doc?: string; error?: string; result?: unknown; proposal?: string }

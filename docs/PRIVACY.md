@@ -2,7 +2,8 @@
 
 ## What reaches a provider
 
-Only what you type in the chat, plus what the assistant reads in its **workspace**:
+Only what you type in the chat, the reference images you attach, plus what the assistant reads
+in its **workspace**:
 
 - the design files (theme, treatments, overrides, custom Typst rules, import mapping)
 - **lorem-ipsum twins** of the documents: same structure and styles, every word replaced by a
@@ -23,6 +24,12 @@ Only what you type in the chat, plus what the assistant reads in its **workspace
   shown only to you
 
 Never: the Word files, their text, real previews, reports, file names, the project folder.
+
+**Reference images** are the exception you make yourself. An image attached in the chat is
+sent as it looks: what it shows is not anonymised. Livery decodes it, scales it to at most
+2000 px and saves it again as a plain PNG, which drops EXIF, location, author and embedded
+profiles, and stores it in the workspace as `references/ref-NN.png`. Its file name is not
+passed on. The message box says this while an image is attached.
 
 ## Agent sandbox (Bubblewrap)
 
