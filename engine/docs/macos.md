@@ -32,8 +32,8 @@ brew install --cask libreoffice
 
 ```
 cd ~
-git clone https://github.com/eddev00/anti-rdim.git
-cd anti-rdim/engine
+git clone https://github.com/eddev00/livery.git
+cd livery/engine
 uv sync
 ```
 
@@ -78,7 +78,7 @@ The browser opens on `http://127.0.0.1:<port>/?token=…`. The server listens on
 Mac only and stops with Ctrl-C or the Quit button. Put the Word files to convert in
 `~/livery-live/in/` and pick them with "New build"; the files stay where they are.
 
-Keep the documents in `~/livery-live/`, never inside the `anti-rdim` folder:
+Keep the documents in `~/livery-live/`, never inside the `livery` folder:
 that folder is the code, and it is the only thing that may be shared with a coding
 agent. See [live-side.md](live-side.md) for the reasoning and the edge-case flow.
 
@@ -92,7 +92,7 @@ uv run livery ui --out ~/livery-live/out --push
 ## 6. Update later
 
 ```
-cd ~/anti-rdim/engine
+cd ~/livery/engine
 git pull
 uv sync
 ```
