@@ -23,6 +23,13 @@ class ToolMissing(RuntimeError):
 
 
 def find_tool(name: str) -> Path | None:
+    # A packaged build (the desktop AppImage) ships its own tools and names their folder here;
+    # they win over whatever the host has installed.
+    bundled = os.environ.get("LIVERY_TOOLS_DIR")
+    if bundled:
+        p = Path(bundled) / name
+        if p.is_file() and os.access(p, os.X_OK):
+            return p
     local = LOCAL_BIN / name
     found = shutil.which(name)
     if found:

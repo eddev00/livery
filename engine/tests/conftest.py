@@ -20,7 +20,7 @@ def fixtures_built():
 @pytest.fixture(scope="session")
 def built_features(tmp_path_factory):
     """Build features.docx once for the whole session."""
-    from wordeasy.cli import main
+    from livery.cli import main
 
     out = tmp_path_factory.mktemp("out")
     rc = main(["build", str(FIXTURES / "features.docx"), "--out", str(out)])

@@ -14,6 +14,7 @@ One build of `<doc>.docx` produces, under `out/<doc>/`:
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -24,12 +25,14 @@ from typing import Any, Callable
 from . import pandoc_ast as past
 from . import verify as V
 from .anonymize import AnonymizeError, anonymize_docx, leaked_into_text, lorem_like, original_word_set, verify_anonymized
+from .mapping import apply_to_theme
 from .convert import DEFAULT_THEME, convert, find_soffice, load_theme, office_pdf, preflight, read_typst_ast
 from .render import compile_pdf, compute_root, relocate_main, root_relative, template_import_path, write_main
+from .normalize import word_tokens
 from .report import build_report, write_report
 from .tools import REPO_ROOT, tool_versions
 
-STATE_FILE = "wordeasy.json"
+STATE_FILE = "livery.json"
 ORIGINAL_PDF = "original.pdf"
 TWIN_DIR = "lorem"           # the twin lives in out/<doc>/lorem/, its Word file is lorem/lorem.docx
 REQUIRED_TOOLS = ("pandoc", "typst", "pdftotext", "pdfimages", "pdffonts")
@@ -58,6 +61,8 @@ class BuildOptions:
     cover: str | None = None            # name of a [cover.variants.*] table in the theme
     original_pdf: bool = True           # render the Word file with LibreOffice next to the styled PDF
     twins: bool = True                  # build the lorem-ipsum twin (original + generated) under lorem/
+    mapping: dict[str, Any] | None = None  # an import mapping (livery.mapping) applied over the theme
+    render: bool = True                 # False: convert and run the import checks only, no PDF
 
 
 def out_dir_for(source: Path, out_root: Path) -> Path:
@@ -121,7 +126,7 @@ def _write_main_from_state(out_dir: Path, state: dict[str, Any]) -> None:
     theme_path = Path(state["theme"])
     write_main(out_dir, title=state["title"], root=compute_root(out_dir, theme_path), department=state.get("department"),
                number=state.get("number") or None, department_name=state.get("department_name") or None,
-               version=state.get("version") or None, cover=state.get("cover") or None)
+               version=state.get("version") or None, cover=state.get("cover") or None, theme_path=theme_path)
 
 
 def _render_and_verify(out_dir: Path, state: dict[str, Any], source_text: str, source_struct: past.Structure,
@@ -181,6 +186,125 @@ def _render_original(source: Path, out_dir: Path, progress: Progress) -> V.Check
     return V.CheckResult("original_pdf", V.PASS, f"{ORIGINAL_PDF} rendered with LibreOffice")
 
 
+def _heading_texts(blocks: list[dict[str, Any]]) -> list[str]:
+    out: list[str] = []
+    for b in blocks:
+        if b.get("t") == "Header":
+            out.append(past.stringify_inlines(b["c"][2]))
+        elif b.get("t") == "Div":
+            out.extend(_heading_texts(b["c"][1]))
+    return out
+
+
+def _toc_key(text: str) -> tuple[str, ...]:
+    """Words of a heading or TOC entry without numbers: entries carry page numbers and
+    hand-typed heading numbers that the converted headings no longer have."""
+    return tuple(w.lower() for w in word_tokens(text) if not w.isdigit())
+
+
+def _dropped_check(dropped: list[str], blocks: list[dict[str, Any]], theme: Path | dict[str, Any]) -> V.CheckResult:
+    """Account for every paragraph the filter dropped. Word TOC entries must name a heading
+    that is still in the document (the template regenerates the TOC from those headings);
+    TOC titles, empty headings and the theme's drop styles are dropped by rule. Anything
+    else, or a TOC entry with no heading, is a warning."""
+    source = (load_theme(theme) if isinstance(theme, Path) else theme).get("source", {})
+    rule_styles = {s.lower() for s in source.get("drop_styles", [])}
+    headings = {_toc_key(h) for h in _heading_texts(blocks)}
+    counts = {"toc": 0, "title": 0, "empty": 0, "rule": 0}
+    unexplained: list[str] = []
+    for line in dropped:
+        style, _, text = line[1:].partition("] ")
+        st = style.lower()
+        if re.fullmatch(r"toc \d", st):
+            key = _toc_key(text)
+            if key and (key in headings or any(h[:len(key)] == key for h in headings if h)):
+                counts["toc"] += 1
+            else:
+                unexplained.append(f"TOC entry with no matching heading: «{text}»")
+        elif st.startswith("empty heading"):
+            counts["empty"] += 1
+        elif st.startswith("rule:"):
+            counts["rule"] += 1  # a declared removal: listed by the mapping_rules check
+        elif st in rule_styles or st.startswith("heading "):
+            counts["title"] += 1
+        else:
+            unexplained.append(line)
+    parts = [f"{n} {label}" for n, label in ((counts["toc"], "Word TOC entr" + ("y" if counts["toc"] == 1 else "ies")),
+                                              (counts["title"], "TOC title" + ("" if counts["title"] == 1 else "s")),
+                                              (counts["empty"], "empty heading" + ("" if counts["empty"] == 1 else "s")),
+                                              (counts["rule"], "removed by mapping rules"))
+             if n]
+    summary = f"{len(dropped)} paragraph(s) dropped" + (": " + ", ".join(parts) if parts else "")
+    if unexplained:
+        return V.CheckResult("dropped_paragraphs", V.WARN, summary + f"; {len(unexplained)} not accounted for",
+                             details=unexplained[:12])
+    return V.CheckResult("dropped_paragraphs", V.PASS,
+                         summary + "; all accounted for (the template regenerates the table of contents)",
+                         details=dropped[:12])
+
+
+# Drop rules may remove at most this share of a document's words before it fails.
+MAX_RULE_DROP_SHARE = 1 / 3
+
+
+def _rules_check(rules: list[dict[str, Any]], counts: dict[str, int], dropped: list[str],
+                 raw_text: str) -> V.CheckResult:
+    """What each mapping rule did to this document: blocks matched, text removed. A rule
+    outside its `expect` range warns; drop rules that removed too much of the document fail."""
+    from .mapping import parse_expect
+    removed: dict[str, list[str]] = {}
+    for line in dropped:
+        style, _, text = line[1:].partition("] ")
+        if style.startswith("rule:"):
+            removed.setdefault(style[5:], []).append(text)
+    details, outside = [], []
+    for r in rules:
+        n = counts.get(r["name"], 0)
+        line = f"{r['name']}: {n} block(s)"
+        if r["name"] in removed:
+            line += " removed: " + " | ".join(f"«{t[:120]}»" for t in removed[r["name"]][:8] if t) \
+                    + (" …" if len(removed[r["name"]]) > 8 else "")
+        if "expect" in r:
+            lo, hi = parse_expect(r["expect"])
+            if n < lo or (hi is not None and n > hi):
+                outside.append(r["name"])
+                line += f" (expected {r['expect']})"
+        details.append(line)
+    total = len(word_tokens(raw_text)) or 1
+    gone = sum(len(word_tokens(t)) for texts in removed.values() for t in texts)
+    summary = f"{len(rules)} mapping rule(s), {sum(counts.values())} block(s) matched, " \
+              f"{sum(len(v) for v in removed.values())} removed ({gone} of {total} words)"
+    if gone / total > MAX_RULE_DROP_SHARE:
+        return V.CheckResult("mapping_rules", V.FAIL,
+                             summary + f"; drop rules removed more than {round(MAX_RULE_DROP_SHARE * 100)}% of the "
+                             "document, check the rules", details=details)
+    if outside:
+        return V.CheckResult("mapping_rules", V.WARN,
+                             summary + f"; {len(outside)} rule(s) matched outside their expected range: "
+                             + ", ".join(outside), details=details)
+    return V.CheckResult("mapping_rules", V.PASS, summary, details=details)
+
+
+def _mapping_text_check(raw_text: str, source_text: str, dropped: list[str],
+                        headings: list[dict[str, Any]]) -> V.CheckResult:
+    """Every word of the Word file (read without any mapping) is still in the converted
+    document, or was removed on the record: a dropped paragraph, or a typed heading number
+    (with its chapter word) that the template regenerates."""
+    from collections import Counter
+    missing = Counter(word_tokens(raw_text)) - Counter(word_tokens(source_text))
+    explained = Counter(t for line in dropped for t in word_tokens(line[1:].partition("] ")[2] or line))
+    explained += Counter(t for h in headings for t in word_tokens(h.get("prefix", "")))
+    unexplained = missing - explained
+    if unexplained:
+        words = sorted(unexplained.elements())
+        return V.CheckResult("mapping_text", V.FAIL,
+                             f"{len(words)} word(s) of the Word file are missing from the converted document "
+                             "and were not removed by any rule", details=["missing: " + ", ".join(words[:40])])
+    return V.CheckResult("mapping_text", V.PASS,
+                         f"every word of the Word file is in the converted document or removed on the record "
+                         f"({sum(missing.values())} accounted for)")
+
+
 def _twin_check(twin_report: dict[str, Any] | None, twin_state: dict[str, Any] | None,
                 error: str | None) -> V.CheckResult:
     if error is not None:
@@ -209,6 +333,8 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
         raise FileNotFoundError(f"not found: {source}")
     theme_path = Path(opts.theme).resolve()
     theme = load_theme(theme_path)
+    if opts.mapping is not None:
+        theme = apply_to_theme(theme, opts.mapping)
     out_root = Path(opts.out_root).resolve()
     out_dir = out_dir_for(source, out_root)
 
@@ -238,7 +364,7 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
         "version": cover_info["version"], "department_name": cover_info["department_name"],
         "cover": cover_info["cover"],
         "expected_images": conv.structure.images,
-        "template_import": template_import_path(compute_root(out_dir, theme_path)),
+        "template_import": template_import_path(compute_root(out_dir, theme_path), theme_path),
         "structure": conv.structure.as_dict(), "table_cells": conv.structure.table_cells,
         "links": conv.structure.links,
     }
@@ -248,8 +374,11 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
     _write_state(out_dir, state)
     _write_main_from_state(out_dir, state)
 
-    checks, pdf, extra = _render_and_verify(out_dir, state, conv.source_text, conv.structure,
-                                            conv.structure.images, theme_path, progress)
+    if opts.render:
+        checks, pdf, extra = _render_and_verify(out_dir, state, conv.source_text, conv.structure,
+                                                conv.structure.images, theme_path, progress)
+    else:
+        checks, pdf, extra = [], None, {}
     if conv.revisions.has_tracked_changes:
         n = len(conv.revisions.insertions) + len(conv.revisions.deletions)
         if opts.accept_changes:
@@ -276,10 +405,10 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
         else:
             checks.append(V.CheckResult("heading_numbering", V.PASS, summary + "; all match"))
     if conv.dropped_paragraphs:
-        checks.append(V.CheckResult("dropped_paragraphs", V.WARN,
-                                    f"{len(conv.dropped_paragraphs)} paragraph(s) dropped by design "
-                                    "(Word table of contents, empty headings, hand-typed heading numbers)",
-                                    details=conv.dropped_paragraphs[:12]))
+        checks.append(_dropped_check(conv.dropped_paragraphs, conv.source_ast["blocks"], theme))
+    if theme.get("rule"):
+        checks.append(_rules_check(theme["rule"], conv.rule_counts, conv.dropped_paragraphs, conv.raw_text))
+    checks.append(_mapping_text_check(conv.raw_text, conv.source_text, conv.dropped_paragraphs, conv.headings))
     if conv.outline_stripped:
         checks.append(V.CheckResult("outline_levels", V.WARN,
                                     f"{conv.outline_stripped} non-heading paragraph(s) carried a Word outline level; "
@@ -302,7 +431,7 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
     if opts.twins and not state.get("anonymized"):
         twin_report, twin_error = None, None
         try:
-            twin_report = _build_twin(out_dir, state, progress)
+            twin_report = _build_twin(out_dir, state, progress, mapping=opts.mapping)
         except (AnonymizeError, RuntimeError, ValueError, OSError) as e:
             twin_error = str(e)
         checks.append(_twin_check(twin_report, read_state(twin_dir_for(out_dir)), twin_error))
@@ -317,6 +446,7 @@ def build_document(source: Path, opts: BuildOptions, *, ask_cover: CoverAsker | 
         "dropped_paragraphs": conv.dropped_paragraphs,
         "smartart": [{"index": d.index, "text": d.text} for d in conv.smartart],
         "headings": conv.headings,
+        "mapping_rules": conv.rule_counts,
         "structure": conv.structure.as_dict(),
         "typst_special_chars": conv.typst_special_chars,
         "typst_warnings": extra.get("typst_warnings", []),
@@ -341,7 +471,7 @@ def update_cover(out_dir: Path, fields: dict[str, str | None]) -> dict[str, Any]
     out_dir = out_dir.resolve()
     state = read_state(out_dir)
     if state is None:
-        raise FileNotFoundError(f"{out_dir}: no {STATE_FILE}; not a wordeasy output folder")
+        raise FileNotFoundError(f"{out_dir}: no {STATE_FILE}; not a livery output folder")
     if "cover" in fields:
         check_cover_variant(load_theme(Path(state["theme"])), (fields["cover"] or "").strip())
     for key in COVER_EDITABLE:
@@ -385,11 +515,12 @@ def verify_document(out_dir: Path, theme: Path | None = None, *, progress: Progr
     out_dir = out_dir.resolve()
     state = read_state(out_dir)
     if state is None:
-        raise FileNotFoundError(f"{out_dir}: no {STATE_FILE}; not a wordeasy output folder")
+        raise FileNotFoundError(f"{out_dir}: no {STATE_FILE}; not a livery output folder")
     source_text = (out_dir / "source.txt").read_text(encoding="utf-8")
     struct = _restore_structure(state)
     theme_path = Path(theme).resolve() if theme else Path(state["theme"])
-    new_import = relocate_main(out_dir / "main.typ", state.get("template_import", ""), compute_root(out_dir, theme_path))
+    new_import = relocate_main(out_dir / "main.typ", state.get("template_import", ""), compute_root(out_dir, theme_path),
+                              theme_path)
     if new_import != state.get("template_import"):
         state["template_import"] = new_import
         _write_state(out_dir, state)
@@ -448,7 +579,8 @@ def _scrub_twin(twin_dir: Path) -> None:
         (twin_dir / name).unlink(missing_ok=True)
 
 
-def _build_twin(out_dir: Path, state: dict[str, Any], progress: Progress) -> dict[str, Any]:
+def _build_twin(out_dir: Path, state: dict[str, Any], progress: Progress,
+                mapping: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build the lorem-ipsum twin of a built document under out_dir/lorem/.
 
     The anonymised Word file is verified against the original before it is rendered with
@@ -461,14 +593,15 @@ def _build_twin(out_dir: Path, state: dict[str, Any], progress: Progress) -> dic
         raise FileNotFoundError(f"original document not found: {source}")
     theme_path = Path(state["theme"])
     theme = load_theme(theme_path)
+    if mapping is not None:
+        theme = apply_to_theme(theme, mapping)
     twin_dir = twin_dir_for(out_dir)
     if twin_dir.exists():
         shutil.rmtree(twin_dir)
     twin_dir.mkdir(parents=True)
     twin_docx = twin_dir / f"{TWIN_DIR}.docx"
-    rng = Random()
     try:
-        with tempfile.TemporaryDirectory(prefix="wordeasy-anon-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="livery-anon-") as tmp:
             progress("anonymizing", "preparing the original")
             docx, _ = preflight(source, Path(tmp))  # legacy formats go through LibreOffice into the temp dir
             progress("anonymizing", "replacing every word, number and image")
@@ -476,28 +609,67 @@ def _build_twin(out_dir: Path, state: dict[str, Any], progress: Progress) -> dic
             progress("checking", "verifying that no original word survived")
             stats = verify_anonymized(docx, twin_docx, result.placeholders)
             orig_words = original_word_set(docx)
-        twin_cover: dict[str, Any] = {}
-        _lorem_cover(twin_cover, state, rng)
-        opts = BuildOptions(
-            theme=theme_path, out_root=out_dir, accept_changes=True, twins=False, original_pdf=True,
-            title=twin_cover["title"] or None, number=twin_cover["number"] or None,
-            version=twin_cover["version"] or None, department=twin_cover["department"] or None,
-            department_name=twin_cover["department_name"] or None,
-            cover=twin_cover["cover"] or None,  # a variant name, not content: the twin keeps the same look
-        )
-        report = build_document(twin_docx, opts, progress=progress)
-        progress("checking", "scanning the extracted text for original words")
-        leaked = leaked_into_text((twin_dir / "source.txt").read_text(encoding="utf-8"), orig_words)
-        if leaked:
-            raise AnonymizeError(f"{len(leaked)} original word(s) reached the extracted text: {', '.join(leaked[:15])}")
-        twin_state = read_state(twin_dir) or {}
-        twin_state["anonymized"] = True
-        twin_state["anonymize_stats"] = {**stats, "dropped_parts": len(result.dropped_parts)}
-        _write_state(twin_dir, twin_state)
-        _scrub_twin(twin_dir)
-        return json.loads((twin_dir / "report.json").read_text(encoding="utf-8"))
+        return _convert_twin(twin_dir, state, theme_path, orig_words, {**stats, "dropped_parts": len(result.dropped_parts)},
+                             mapping=mapping, original_pdf=True, render=True, progress=progress)
     except BaseException:
         shutil.rmtree(twin_dir, ignore_errors=True)  # never leave a half-made twin behind
+        raise
+
+
+def _convert_twin(twin_dir: Path, state: dict[str, Any], theme_path: Path, orig_words: set[str],
+                  stats: dict[str, Any], *, mapping: dict[str, Any] | None, original_pdf: bool, render: bool,
+                  progress: Progress) -> dict[str, Any]:
+    """Build twin_dir/lorem.docx (already verified to hold no original word) in twin_dir,
+    then check that the extracted text holds no original word either and make every path
+    relative. Returns the twin's report."""
+    twin_docx = twin_dir / f"{TWIN_DIR}.docx"
+    twin_cover: dict[str, Any] = {}
+    _lorem_cover(twin_cover, state, Random())
+    opts = BuildOptions(
+        theme=theme_path, out_root=twin_dir.parent, accept_changes=True, twins=False, original_pdf=original_pdf,
+        title=twin_cover["title"] or None, number=twin_cover["number"] or None,
+        version=twin_cover["version"] or None, department=twin_cover["department"] or None,
+        department_name=twin_cover["department_name"] or None,
+        cover=twin_cover["cover"] or None,  # a variant name, not content: the twin keeps the same look
+        mapping=mapping, render=render,
+    )
+    build_document(twin_docx, opts, progress=progress)
+    progress("checking", "scanning the extracted text for original words")
+    leaked = leaked_into_text((twin_dir / "source.txt").read_text(encoding="utf-8"), orig_words)
+    if leaked:
+        raise AnonymizeError(f"{len(leaked)} original word(s) reached the extracted text: {', '.join(leaked[:15])}")
+    twin_state = read_state(twin_dir) or {}
+    twin_state["anonymized"] = True
+    twin_state["anonymize_stats"] = stats
+    _write_state(twin_dir, twin_state)
+    _scrub_twin(twin_dir)
+    return json.loads((twin_dir / "report.json").read_text(encoding="utf-8"))
+
+
+def convert_twin_with(out_dir: Path, twin_docx: Path, mapping: dict[str, Any] | None,
+                      progress: Progress | None = None) -> dict[str, Any]:
+    """Convert an existing, verified lorem twin Word file again for the document in
+    out_dir (converted with `mapping`), under out_dir/lorem/, without a new anonymisation
+    or PDF. The text is scanned against the original once more. Returns the twin's report."""
+    progress = progress or _noop
+    out_dir = out_dir.resolve()
+    state = read_state(out_dir)
+    if state is None:
+        raise FileNotFoundError(f"{out_dir}: no {STATE_FILE}; not a livery output folder")
+    twin_dir = twin_dir_for(out_dir)
+    if twin_dir.exists():
+        shutil.rmtree(twin_dir)
+    twin_dir.mkdir(parents=True)
+    try:
+        shutil.copyfile(twin_docx, twin_dir / f"{TWIN_DIR}.docx")
+        with tempfile.TemporaryDirectory(prefix="livery-anon-") as tmp:
+            docx, _ = preflight(Path(state["source"]), Path(tmp))
+            orig_words = original_word_set(docx)
+        stats = (read_state(twin_docx.parent) or {}).get("anonymize_stats", {})
+        return _convert_twin(twin_dir, state, Path(state["theme"]), orig_words, stats, mapping=mapping,
+                             original_pdf=False, render=False, progress=progress)
+    except BaseException:
+        shutil.rmtree(twin_dir, ignore_errors=True)
         raise
 
 
@@ -511,7 +683,7 @@ def anonymize_document(out_dir: Path, *, progress: Progress | None = None) -> di
     out_dir = out_dir.resolve()
     state = read_state(out_dir)
     if state is None:
-        raise FileNotFoundError(f"{out_dir}: no {STATE_FILE}; not a wordeasy output folder")
+        raise FileNotFoundError(f"{out_dir}: no {STATE_FILE}; not a livery output folder")
     if state.get("anonymized"):
         raise AnonymizeError("this document is already a lorem ipsum twin")
     twin_report = _build_twin(out_dir, state, progress)

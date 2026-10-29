@@ -1,4 +1,4 @@
-"""wordeasy command line: build Word documents into styled Typst + PDF, verify content integrity."""
+"""livery command line: build Word documents into styled Typst + PDF, verify content integrity."""
 from __future__ import annotations
 
 import argparse
@@ -126,7 +126,7 @@ def cmd_ui(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(prog="wordeasy", description=__doc__)
+    p = argparse.ArgumentParser(prog="livery", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
 
     b = sub.add_parser("build", help="convert .docx files to styled Typst + PDF (plus original.pdf and a lorem ipsum twin) and verify content")

@@ -3,7 +3,7 @@
 #
 # Real inputs and outputs live OUTSIDE this repo and must never enter it. The only thing
 # that may cross the boundary is a lorem twin whose anonymiser recorded a clean
-# verification: wordeasy.json carries "anonymized": true, which the pipeline writes ONLY
+# verification: livery.json carries "anonymized": true, which the pipeline writes ONLY
 # after verify_anonymized() and the extracted-text leak scan have both passed. Everything
 # the twin build places under lorem/ is derived from the anonymised copy, so copying that
 # whole subtree (and nothing beside it) is safe. This script refuses anything without the
@@ -14,7 +14,7 @@ set -euo pipefail
 
 src="${1:?usage: export-twin.sh <out>/<doc> [dest-name]}"
 twin="$src/lorem"
-marker="$twin/wordeasy.json"
+marker="$twin/livery.json"
 dest_name="${2:-$(basename "$src")}"
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 dest="$repo_root/cases/$dest_name"

@@ -14,12 +14,16 @@ from typing import Any
 from . import pandoc_ast as past
 from .table_fills import write_table_fills
 from .smartart import has_smartart, replace_smartart
-from .docx_fixups import strip_outline_levels
+from .docx_fixups import drop_pages, strip_outline_levels
+from .mapping import MappingError, pages_of, split_rules, validate_rules
 from .tools import FILTER_DIR, TEMPLATE_DIR, find_tool, require_tools, run
 
-LUA_FILTER = FILTER_DIR / "wordeasy.lua"
+LUA_FILTER = FILTER_DIR / "livery.lua"
 DEFAULT_THEME = TEMPLATE_DIR / "theme.toml"
 CONVERTIBLE = {".doc", ".odt", ".rtf", ".docm", ".dotx", ".dot"}
+ELEMENTS_FILE = "elements.json"
+# The element markers the filter's instrumentation pass writes, one per line, exactly this shape.
+MARKER_RE = re.compile(r'^#metadata\("[hptlfx]\d{4,}"\) <we-[se]>\n', re.M)
 
 
 def load_theme(path: Path) -> dict[str, Any]:
@@ -45,6 +49,8 @@ class ConvertResult:
     typst_special_chars: dict[str, int] = field(default_factory=dict)
     smartart: list = field(default_factory=list)
     outline_stripped: int = 0
+    raw_text: str = ""                                       # the Word file's text, read without any mapping
+    rule_counts: dict[str, int] = field(default_factory=dict)  # mapping rule name -> blocks matched
 
 
 def find_soffice() -> Path | None:
@@ -111,10 +117,32 @@ _COLUMNS_RE = re.compile(r"(columns: \()([^)]*%[^)]*)(\))")
 
 
 def _stretch_table_columns(content_typ: Path) -> None:
-    """`columns: (25%, 75%)` -> `columns: (25fr, 75fr)`: same proportions, full text width."""
+    """`columns: (25%, 75%)` -> `columns: (25fr, 75fr)`: same proportions, full text width.
+    A single column keeps a trailing comma, `(50fr,)`: without it the parentheses are only
+    grouping, and pandoc's Typst reader cannot count the columns when reading it back."""
     text = content_typ.read_text(encoding="utf-8")
-    text = _COLUMNS_RE.sub(lambda m: m.group(1) + m.group(2).replace("%", "fr") + m.group(3), text)
+
+    def stretch(m: re.Match[str]) -> str:
+        inner = m.group(2).replace("%", "fr")
+        if "," not in inner:
+            inner += ","
+        return m.group(1) + inner + m.group(3)
+    text = _COLUMNS_RE.sub(stretch, text)
     content_typ.write_text(text, encoding="utf-8")
+
+
+_TYPED_NUMBER_RE = re.compile(r"(?<=\[)(\d+)\.(?=[ \t])")
+
+
+def _escape_typed_numbers(content_typ: Path) -> None:
+    """`[1. Business Overview]` -> `[1\\. Business Overview]`.
+
+    pandoc writes real numbered lists as `+ item`, but leaves a number typed at the start of a
+    table cell or other content block unescaped, and Typst then reads `1. ` as a list marker:
+    the typed number would become list numbering and drop out of the text. Escaping the dot
+    keeps it as text. Layout only; the read-back sees exactly the source text again."""
+    text = content_typ.read_text(encoding="utf-8")
+    content_typ.write_text(_TYPED_NUMBER_RE.sub(lambda m: m.group(1) + "\\.", text), encoding="utf-8")
 
 
 _LIST_AFTER_BRACKET_RE = re.compile(r"^(\s*)(.*?)(?<![\w\]])\[([-+]) ", re.M)
@@ -150,9 +178,10 @@ def _read_heading_log(path: Path) -> list[dict[str, str]]:
     out = []
     for line in path.read_text(encoding="utf-8").splitlines():
         parts = line.split("\t")
-        if len(parts) == 5:
-            kind, typed, level, expected, text = parts
-            out.append({"kind": kind, "typed": typed, "level": int(level), "expected": expected, "text": text.strip()})
+        if len(parts) == 6:
+            kind, typed, level, expected, prefix, text = parts
+            out.append({"kind": kind, "typed": typed, "level": int(level), "expected": expected, "prefix": prefix,
+                        "text": text.strip()})
     path.unlink()
     return out
 
@@ -187,25 +216,51 @@ def convert(
         smartart = replace_smartart(docx, rendered, out_dir / "_preflight" / "smartart")
         docx = rendered
 
+    rules = theme.get("rule", [])
+    problems = validate_rules(rules)
+    if problems:
+        raise MappingError(problems)
+    page_rules, block_rules = split_rules(rules)
+    # The words of the Word file as pandoc reads it without the filter: what the mapping
+    # may restructure but never lose (pipeline's mapping_text check).
+    r_raw = run([pandoc, docx, "-f", "docx", "-t", "json", "--track-changes=accept"], cwd=out_dir)
+    raw_buf: list[str] = []
+    past._walk_blocks(json.loads(r_raw.stdout)["blocks"], raw_buf, [])
+    raw_text = "".join(raw_buf)
+    rule_counts = {r["name"]: 0 for r in rules}
+    page_dropped: list[str] = []
+    if page_rules:
+        paged = out_dir / "_preflight" / (docx.stem + "-pages.docx")
+        paged.parent.mkdir(parents=True, exist_ok=True)
+        removed = drop_pages(docx, paged, [(r["name"], pages_of(r["match"]["page"])) for r in page_rules])
+        for name, text in removed:
+            rule_counts[name] += 1
+            page_dropped.append(f"[rule:{name}] {text}")
+        if removed:
+            docx = paged
+
     style_map = {k: int(v) for k, v in theme.get("style_map", {}).items()}
     drop_log = out_dir / "_dropped.tsv"
     heading_log = out_dir / "_headings.tsv"
-    for f in (drop_log, heading_log):
+    rule_log = out_dir / "_rules.json"
+    for f in (drop_log, heading_log, rule_log):
         if f.exists():
             f.unlink()
     src = theme.get("source", {})
     env = {
-        "WORDEASY_STYLE_MAP": json.dumps(style_map),
-        "WORDEASY_TEXT_WIDTH_IN": str(theme.get("source", {}).get("text_width_in", 6.5)),
-        "WORDEASY_DROP_STYLES": json.dumps(list(theme.get("source", {}).get("drop_styles", []))),
-        "WORDEASY_DROP_HEADINGS": json.dumps(list(theme.get("source", {}).get("drop_headings", []))),
-        "WORDEASY_DROP_LOG": str(drop_log),
-        "WORDEASY_TABLE_COLUMNS": _filter_column_mode(theme),
-        "WORDEASY_TABLE_ALIGN": str(theme.get("tables", {}).get("align", "left")),
-        "WORDEASY_BLOCK_QUOTES": str(theme.get("source", {}).get("block_quotes", "unwrap")),
-        "WORDEASY_HEADING_NUMBERS": str(src.get("heading_numbers", "parse")),
-        "WORDEASY_CHAPTER_WORDS": json.dumps(list(src.get("chapter_words", []))),
-        "WORDEASY_HEADING_LOG": str(heading_log),
+        "LIVERY_STYLE_MAP": json.dumps(style_map),
+        "LIVERY_TEXT_WIDTH_IN": str(theme.get("source", {}).get("text_width_in", 6.5)),
+        "LIVERY_DROP_STYLES": json.dumps(list(theme.get("source", {}).get("drop_styles", []))),
+        "LIVERY_DROP_HEADINGS": json.dumps(list(theme.get("source", {}).get("drop_headings", []))),
+        "LIVERY_DROP_LOG": str(drop_log),
+        "LIVERY_TABLE_COLUMNS": _filter_column_mode(theme),
+        "LIVERY_TABLE_ALIGN": str(theme.get("tables", {}).get("align", "left")),
+        "LIVERY_BLOCK_QUOTES": str(theme.get("source", {}).get("block_quotes", "unwrap")),
+        "LIVERY_HEADING_NUMBERS": str(src.get("heading_numbers", "parse")),
+        "LIVERY_CHAPTER_WORDS": json.dumps(list(src.get("chapter_words", []))),
+        "LIVERY_HEADING_LOG": str(heading_log),
+        "LIVERY_RULES": json.dumps(block_rules),
+        "LIVERY_RULE_LOG": str(rule_log),
     }
     common = [
         pandoc, docx, "-f", "docx+styles", "--wrap=none",
@@ -213,20 +268,30 @@ def convert(
         "--track-changes=accept",
     ]
 
-    # 1. content.typ (media extracted next to it, referenced relatively)
+    # 1. content.typ (media extracted next to it, referenced relatively). With [desktop]
+    # instrument = true every block is bracketed by invisible element markers and the
+    # element inventory is written next to it (see the filter's third pass).
     content_typ = out_dir / "content.typ"
-    r_typ = run(common + ["-t", "typst", "--extract-media=.", "-o", content_typ], cwd=out_dir, env=env)
+    typ_env = dict(env)
+    if theme.get("desktop", {}).get("instrument", False):
+        typ_env["LIVERY_INSTRUMENT"] = str(out_dir / ELEMENTS_FILE)
+    r_typ = run(common + ["-t", "typst", "--extract-media=.", "-o", content_typ], cwd=out_dir, env=typ_env)
     if theme.get("tables", {}).get("column_widths", "fill") == "fill":
         _stretch_table_columns(content_typ)
     _lists_on_own_line(content_typ)
+    _escape_typed_numbers(content_typ)
 
-    dropped_paragraphs = _read_drop_log(drop_log)
+    dropped_paragraphs = page_dropped + _read_drop_log(drop_log)
+    if rule_log.exists():
+        for name, n in json.loads(rule_log.read_text(encoding="utf-8") or "{}").items():
+            rule_counts[name] = rule_counts.get(name, 0) + int(n)
+        rule_log.unlink()
     write_table_fills(docx, out_dir / "table-fills.json")
     headings = _read_heading_log(heading_log)
 
     # 2. JSON AST of the source, after the same filter, for text + structure
     # (logs not passed again: the same lines would be logged twice)
-    r_json = run(common + ["-t", "json"], cwd=out_dir, env={**env, "WORDEASY_DROP_LOG": "", "WORDEASY_HEADING_LOG": ""})
+    r_json = run(common + ["-t", "json"], cwd=out_dir, env={**env, "LIVERY_DROP_LOG": "", "LIVERY_HEADING_LOG": "", "LIVERY_RULE_LOG": ""})
     ast = json.loads(r_json.stdout)
     blocks = ast["blocks"]
     meta = ast.get("meta", {})
@@ -259,14 +324,28 @@ def convert(
         smartart=smartart,
         outline_stripped=outline_stripped,
         headings=headings,
+        raw_text=raw_text,
+        rule_counts=rule_counts,
         pandoc_stderr=(r_typ.stderr + r_json.stderr).strip(),
         typst_special_chars=_special_char_census(source_text),
     )
 
 
+def strip_markers(text: str) -> str:
+    """content.typ without the element markers of the instrumentation pass."""
+    return MARKER_RE.sub("", text)
+
+
 def read_typst_ast(content_typ: Path, log_path: Path) -> tuple[dict[str, Any], list[str]]:
     """Parse a Typst file back with pandoc's typst reader. Returns (ast, ignored-element messages)."""
     tools = require_tools("pandoc")
+    text = content_typ.read_text(encoding="utf-8")
+    stripped = strip_markers(text)
+    if stripped != text:
+        # Element markers are layout-neutral metadata; pandoc's reader would report them as
+        # ignored elements. Read back exactly the content without them.
+        content_typ = content_typ.with_name("_readback.typ")
+        content_typ.write_text(stripped, encoding="utf-8")
     run([tools["pandoc"], content_typ, "-f", "typst", "-t", "json", f"--log={log_path}", "-o", log_path.with_suffix(".json")],
         cwd=content_typ.parent)
     ast = json.loads(log_path.with_suffix(".json").read_text(encoding="utf-8"))

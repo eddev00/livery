@@ -617,7 +617,7 @@
   async function quit() {
     if (!confirm("Stop the local Anti-Rdiim server? Running jobs will be interrupted.")) return;
     try { await postJSON("/api/quit", {}); } catch (_) { /* server is gone */ }
-    document.body.innerHTML = `<div class="empty" style="padding-top:22vh"><div class="eyebrow">Anti-Rdiim</div><h1 style="font-size:40px;letter-spacing:-.05em;color:var(--ink)">Stopped</h1><p style="margin-top:10px">Run <code>uv run wordeasy ui</code> to start it again.</p></div>`;
+    document.body.innerHTML = `<div class="empty" style="padding-top:22vh"><div class="eyebrow">Anti-Rdiim</div><h1 style="font-size:40px;letter-spacing:-.05em;color:var(--ink)">Stopped</h1><p style="margin-top:10px">Run <code>uv run livery ui</code> to start it again.</p></div>`;
   }
   async function route() {
     const h = location.hash || "#/";

@@ -131,7 +131,7 @@ def replace_smartart(docx_in: Path, docx_out: Path, work: Path) -> list[SmartArt
             if "<dgm:relIds" not in drawing:
                 return drawing
             counter += 1
-            name = f"wordeasy-smartart-{counter}"
+            name = f"livery-smartart-{counter}"
             png = _render(docx_in, doc_open, sect, drawing, work, name)
             text = _diagram_text(z, drawing, rels)
             if png is None:
@@ -144,7 +144,7 @@ def replace_smartart(docx_in: Path, docx_out: Path, work: Path) -> list[SmartArt
             cx = int(ext.group(1)) if ext else 5000000
             cy = int(cx * h / w)
             docpr = re.search(r'<wp:docPr id="(\d+)"', drawing)
-            rid = f"rIdWordeasy{counter}"
+            rid = f"rIdLivery{counter}"
             rels = rels.replace("</Relationships>",
                                 f'<Relationship Id="{rid}" Type="{_IMAGE_REL}" Target="media/{name}.png"/></Relationships>')
             new_media[f"word/media/{name}.png"] = png.read_bytes()

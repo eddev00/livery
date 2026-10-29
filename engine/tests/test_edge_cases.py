@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from wordeasy.cli import main
-from wordeasy.edge_cases import is_twin_docx
+from livery.cli import main
+from livery.edge_cases import is_twin_docx
 
 EDGE_CASES = Path(__file__).resolve().parent / "fixtures" / "edge-cases"
 DOCS = sorted(EDGE_CASES.glob("*.docx"))

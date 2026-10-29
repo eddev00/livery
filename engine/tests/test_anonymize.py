@@ -7,10 +7,10 @@ from random import Random
 
 import pytest
 
-from wordeasy.anonymize import (AnonymizeError, LOREM_VOCAB, anonymize_docx, lorem_like, original_word_set,
+from livery.anonymize import (AnonymizeError, LOREM_VOCAB, anonymize_docx, lorem_like, original_word_set,
                                 verify_anonymized)
-from wordeasy.cli import main
-from wordeasy.pipeline import anonymize_document, read_state
+from livery.cli import main
+from livery.pipeline import anonymize_document, read_state
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"

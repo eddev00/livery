@@ -132,7 +132,7 @@ def make_image(path: Path) -> None:
     img = Image.new("RGB", (400, 200), (30, 90, 160))
     d = ImageDraw.Draw(img)
     d.rectangle([20, 20, 380, 180], outline=(255, 255, 255), width=4)
-    d.text((40, 90), "wordeasy fixture image", fill=(255, 255, 255))
+    d.text((40, 90), "livery fixture image", fill=(255, 255, 255))
     img.save(path)
 
 
