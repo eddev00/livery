@@ -28,50 +28,20 @@ content, accept it, and export the whole batch as PDF.
 
 **1. Your documents stay home, the agent gets a stand-in.**
 
-```mermaid
-flowchart LR
-    W[".docx"] --> C["Content<br/>(fixed)"]
-    C --> T["Lorem-ipsum twin<br/>same layout, fake words"]
-    subgraph SB["Sandbox: sees only twins + design files, network only to the provider API"]
-        A["Claude Code / Codex"]
-    end
-    T --> A
-    A --> D["Design change<br/>(styles only)"]
-    C --> R["Render on your machine"]
-    D --> R
-    R --> P["PDF"]
-```
+![Your document stays on your machine; the agent sees a lorem-ipsum twin in a sandbox and sends back a styles-only design change](docs/images/privacy.png)
 
 **2. Every change is a proposal you can compare, accept or undo.**
 
-```mermaid
-flowchart LR
-    S["Click an element"] --> Q["Ask in chat"]
-    Q --> PR["Proposal rendered<br/>with real content"]
-    PR --> CMP["Side by side<br/>with current design"]
-    CMP -->|accept| ACC["Applied<br/>(removable later)"]
-    CMP -->|discard| Q
-```
+![Click an element, describe the change, compare it with real content, accept or ask again](docs/images/loop.png)
 
 **3. No PDF ships with a missing word.**
 
-```mermaid
-flowchart LR
-    SRC["Word text"] --> V{"Same words?"}
-    TYP["Typst text"] --> V
-    PDF["PDF text layer"] --> V
-    V -->|yes| EX["Export"]
-    V -->|no| BL["Blocked"]
-```
+![The Word source, the Typst markup and the PDF text layer must hold the same words, or the export is blocked](docs/images/verify.png)
 
 In short: content and design are separate layers. Content is converted once and never touched;
 the agent can only change how it looks.
 
 ![Accepted design and proposal side by side](docs/images/compare.png)
-
-The default template, rendered from one of the test documents (a lorem-ipsum twin):
-
-![Cover, contents, section page and body of a restyled document](docs/images/template-pages.png)
 
 ## Design decisions
 

@@ -1,0 +1,87 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="common.css"></head><body>
+<svg width="1000" height="310" viewBox="0 0 1000 310" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5a5654"/></marker>
+    <g id="lines">
+      <rect x="0" y="0" width="56" height="5" rx="2" fill="#3b3634"/>
+      <rect x="0" y="11" width="78" height="3" rx="1.5" fill="#c9c4bf"/>
+      <rect x="0" y="18" width="70" height="3" rx="1.5" fill="#c9c4bf"/>
+      <rect x="0" y="25" width="74" height="3" rx="1.5" fill="#c9c4bf"/>
+    </g>
+    <g id="table">
+      <rect x="0" y="0" width="78" height="30" fill="#fff" stroke="#c9c4bf" stroke-width="0.8"/>
+      <line x1="0" y1="15" x2="78" y2="15" stroke="#e2ddd8" stroke-width="0.8"/>
+      <line x1="0" y1="22.5" x2="78" y2="22.5" stroke="#e2ddd8" stroke-width="0.8"/>
+      <line x1="26" y1="0" x2="26" y2="30" stroke="#e2ddd8" stroke-width="0.8"/>
+      <line x1="52" y1="0" x2="52" y2="30" stroke="#e2ddd8" stroke-width="0.8"/>
+    </g>
+  </defs>
+  <rect class="bg" width="1000" height="310" rx="18"/>
+
+  <!-- 1 click -->
+  <g transform="translate(28,28)">
+    <rect class="card" width="214" height="214" rx="12"/>
+    <circle cx="26" cy="28" r="12" fill="#e07850"/><text x="26" y="33" text-anchor="middle" font-size="13" font-weight="700" fill="#151110">1</text>
+    <text class="h" x="48" y="34">Click anything</text>
+    <rect class="page" x="47" y="56" width="120" height="96" rx="3"/>
+    <use href="#lines" x="61" y="66"/>
+    <g transform="translate(68,104)"><use href="#table"/><rect x="0" y="0" width="78" height="7.5" fill="#e9e5e1"/></g>
+    <rect x="64" y="100" width="86" height="38" rx="2" fill="rgba(224,120,80,0.12)" stroke="#e07850" stroke-width="1.6"/>
+    <rect x="112" y="91" width="40" height="13" rx="3" fill="#e07850"/><text x="132" y="101" text-anchor="middle" font-size="9" font-weight="600" fill="#151110">Table 1</text>
+    <path d="M136,128 l0,16 l4,-4 l3,7 l3,-1.5 l-3,-7 l5.5,0 z" fill="#eae8e6" stroke="#151110" stroke-width="1"/>
+    <text class="m" x="18" y="178">A heading, a paragraph, a table,</text>
+    <text class="m" x="18" y="196">or the whole page.</text>
+  </g>
+  <path class="wire" d="M242,135 H272" marker-end="url(#a)"/>
+
+  <!-- 2 ask -->
+  <g transform="translate(276,28)">
+    <rect class="card" width="214" height="214" rx="12"/>
+    <circle cx="26" cy="28" r="12" fill="#e07850"/><text x="26" y="33" text-anchor="middle" font-size="13" font-weight="700" fill="#151110">2</text>
+    <text class="h" x="48" y="34">Say what you want</text>
+    <rect x="18" y="56" width="178" height="96" rx="10" fill="#2a2827"/>
+    <rect x="30" y="66" width="50" height="15" rx="4" fill="rgba(224,120,80,0.16)"/><text x="55" y="77" text-anchor="middle" font-size="9.5" font-weight="600" fill="#e07850">Table 1</text>
+    <text class="t" x="30" y="102">“Make every table header</text>
+    <text class="t" x="30" y="120">like this one, but darker”</text>
+    <text class="m" x="30" y="140" font-size="11">→ every matching table</text>
+    <text class="m" x="18" y="178">One element, or every one</text>
+    <text class="m" x="18" y="196">like it across the batch.</text>
+  </g>
+  <path class="wire" d="M490,135 H520" marker-end="url(#a)"/>
+
+  <!-- 3 compare -->
+  <g transform="translate(524,28)">
+    <rect class="card" width="214" height="214" rx="12"/>
+    <circle cx="26" cy="28" r="12" fill="#e07850"/><text x="26" y="33" text-anchor="middle" font-size="13" font-weight="700" fill="#151110">3</text>
+    <text class="h" x="48" y="34">Compare</text>
+    <text class="eyebrow" x="60" y="66" text-anchor="middle" font-size="9">NOW</text>
+    <text class="eyebrow" x="154" y="66" text-anchor="middle" font-size="9" style="fill:#e07850">PROPOSED</text>
+    <rect class="page" x="18" y="74" width="84" height="78" rx="3"/>
+    <rect class="page" x="112" y="74" width="84" height="78" rx="3"/>
+    <g transform="translate(26,84) scale(0.86)"><use href="#lines"/></g>
+    <g transform="translate(120,84) scale(0.86)"><use href="#lines"/></g>
+    <g transform="translate(26,116) scale(0.86)"><use href="#table"/><rect width="78" height="7.5" fill="#e9e5e1"/></g>
+    <g transform="translate(120,116) scale(0.86)"><use href="#table"/><rect width="78" height="7.5" fill="#b5481f"/></g>
+    <text class="m" x="18" y="178">Rendered with your real text,</text>
+    <text class="m" x="18" y="196">next to what you have now.</text>
+  </g>
+  <path class="wire" d="M738,135 H768" marker-end="url(#a)"/>
+
+  <!-- 4 accept -->
+  <g transform="translate(772,28)">
+    <rect class="card" width="200" height="214" rx="12"/>
+    <circle cx="26" cy="28" r="12" fill="#e07850"/><text x="26" y="33" text-anchor="middle" font-size="13" font-weight="700" fill="#151110">4</text>
+    <text class="h" x="48" y="34">Accept</text>
+    <rect x="18" y="72" width="164" height="34" rx="8" fill="#eae8e6"/>
+    <text x="100" y="94" text-anchor="middle" font-size="14" font-weight="600" fill="#151110">Accept</text>
+    <rect x="18" y="114" width="164" height="34" rx="8" fill="none" stroke="#3a3837" stroke-width="1.2"/>
+    <text x="100" y="136" text-anchor="middle" font-size="14" fill="#a8a5a3">Discard</text>
+    <text class="m" x="18" y="178">Every accepted change stays</text>
+    <text class="m" x="18" y="196">removable, one by one.</text>
+  </g>
+
+  <!-- ask again -->
+  <path class="wire" d="M872,242 V274 H383 V246" marker-end="url(#a)" stroke-dasharray="4 4"/>
+  <rect x="560" y="264" width="132" height="20" rx="10" fill="#151110"/>
+  <text class="lbl" x="626" y="279" text-anchor="middle">not quite? ask again</text>
+</svg></body></html>

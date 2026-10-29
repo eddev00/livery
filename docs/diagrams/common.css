@@ -1,0 +1,24 @@
+@font-face { font-family: "S3"; src: url("../../engine/template/assets/fonts/SourceSans3-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: "S3"; src: url("../../engine/template/assets/fonts/SourceSans3-Semibold.ttf"); font-weight: 600; }
+@font-face { font-family: "S3"; src: url("../../engine/template/assets/fonts/SourceSans3-Bold.ttf"); font-weight: 700; }
+html, body { margin: 0; background: transparent; }
+svg { display: block; font-family: "S3", sans-serif; }
+.bg { fill: #151110; }
+.frame { fill: #1a1716; stroke: #3a3837; stroke-width: 1.5; }
+.card { fill: #201e1c; stroke: #3a3837; stroke-width: 1.2; }
+.page { fill: #f6f4f1; }
+.eyebrow { fill: #a8a5a3; font-size: 11px; font-weight: 600; letter-spacing: 1.6px; }
+.h { fill: #eae8e6; font-size: 16px; font-weight: 600; }
+.t { fill: #eae8e6; font-size: 13px; }
+.m { fill: #a8a5a3; font-size: 12.5px; }
+.ink { fill: #2b2725; font-size: 12px; }
+.lorem { fill: #6c5fc7; font-size: 12px; }
+.wire { fill: none; stroke: #5a5654; stroke-width: 1.6; }
+.wire.accent { stroke: #e07850; }
+.wire.busy { stroke: #a99cf0; }
+.wire.pass { stroke: #5fb37f; }
+.wire.fail { stroke: #e06c6c; }
+.lbl { fill: #a8a5a3; font-size: 12px; }
+.lbl.accent { fill: #e07850; font-weight: 600; }
+.lbl.busy { fill: #a99cf0; font-weight: 600; }
+.pill-bg { fill: #151110; }
