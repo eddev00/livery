@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import socket
+import sys
 import threading
 import time
 from pathlib import Path
@@ -317,7 +318,11 @@ def test_sandbox_escapes_are_blocked(project):
     # The home folder shows only the parents of the read-only runtime mounts (the
     # interpreter and the agent binary), never the user's files.
     listed = report[str(home)].removeprefix("listed:").split(",") if report[str(home)].startswith("listed:") else []
-    assert set(listed) <= {".local", ".superset", ".cache", ".npm-global"}, listed
+    runtime = {".local", ".superset", ".cache", ".npm-global"}
+    for mount in (Path(sys.prefix).resolve(), Path(sys.executable).resolve()):  # e.g. ~/work/<repo>/.venv on CI
+        if mount.is_relative_to(home):
+            runtime.add(mount.relative_to(home).parts[0])
+    assert set(listed) <= runtime, listed
     assert report[f"tcp:{port}"].startswith("blocked")
     assert report["internet"].startswith("blocked")
     assert report["/proc/1/environ"].startswith("blocked") or "LIVERY" not in report["/proc/1/environ"]
