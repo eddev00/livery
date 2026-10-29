@@ -1,0 +1,9 @@
+# build outputs
+/build/
+/dist/
+app/node_modules/
+app/dist/
+# engine
+engine/.venv/
+__pycache__/
+*.pyc
