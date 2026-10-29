@@ -244,15 +244,19 @@ function registerIpc(): void {
 
 // ------------------------------------------------------------------ window
 const SMOKE = process.env.LIVERY_SMOKE; // folder for screenshots: run the end-to-end smoke test and quit
+// LIVERY_SMOKE_SIZE=WxH sets the smoke window's content size, which is the screenshot size.
+const SMOKE_SIZE = /^(\d+)x(\d+)$/.exec(process.env.LIVERY_SMOKE_SIZE ?? "");
 
 function createWindow(): void {
+  const [width, height] = SMOKE && SMOKE_SIZE ? [Number(SMOKE_SIZE[1]), Number(SMOKE_SIZE[2])] : [1480, 920];
   win = new BrowserWindow({
     show: !SMOKE,
     paintWhenInitiallyHidden: true,
-    width: 1480,
-    height: 920,
-    minWidth: 1100,
-    minHeight: 680,
+    width,
+    height,
+    useContentSize: true,
+    minWidth: Math.min(1100, width),
+    minHeight: Math.min(680, height),
     title: "Livery",
     backgroundColor: "#f4f5f7",
     webPreferences: {
@@ -302,11 +306,21 @@ async function smoke(out: string): Promise<number> {
   mkdirSync(out, { recursive: true });
   const log = (m: string) => console.log(`[smoke] ${m}`);
   const shot = async (name: string) => {
-    const img = await win!.webContents.capturePage();
+    const img = await win!.webContents.capturePage(
+      SMOKE_SIZE ? { x: 0, y: 0, width: Number(SMOKE_SIZE[1]), height: Number(SMOKE_SIZE[2]) } : undefined);
     writeFileSync(path.join(out, name), img.toPNG());
     log(`screenshot ${name}`);
   };
   win!.webContents.on("console-message", (e) => log(`console: ${e.message}`));
+  if (SMOKE_SIZE) {
+    // Set after creation: a new window is clamped to the primary display. The window system can round
+    // the result a pixel either way, so grow until it is at least the size; shot() crops to it.
+    const [w, h] = [Number(SMOKE_SIZE[1]), Number(SMOKE_SIZE[2])];
+    win!.setContentSize(w, h);
+    const [gw, gh] = win!.getContentSize();
+    if (gw < w || gh < h) win!.setContentSize(w + Math.max(0, w - gw), h + Math.max(0, h - gh));
+    log(`window ${win!.getContentSize().join("x")}`);
+  }
   try {
     if (!engine?.port) throw new Error(engine?.error ?? "engine not running");
     const sys = await call("GET", "/api/system");
@@ -328,6 +342,9 @@ async function smoke(out: string): Promise<number> {
     await win!.webContents.executeJavaScript(`localStorage.setItem("we:project", ${JSON.stringify(p.id)})`);
     win!.webContents.reload(); // the page itself may not navigate (will-navigate is blocked)
     await new Promise((r) => setTimeout(r, 6000));
+    // In a wide window "Fit" scales a page past the bottom edge; 100% keeps a whole page in view.
+    if (SMOKE_SIZE) await win!.webContents.executeJavaScript(
+      `["Zoom out", "Zoom in"].forEach((l) => document.querySelector('.zoom [aria-label="' + l + '"]')?.click())`);
     log("page " + JSON.stringify(await win!.webContents.executeJavaScript(
       `({ ls: localStorage.getItem("we:project"), sel: document.querySelector(".project-select")?.value, docs: document.querySelectorAll(".docs li").length, opts: [...document.querySelectorAll(".project-select option")].map(o => o.value) })`)));
     await shot("01-workspace.png");
