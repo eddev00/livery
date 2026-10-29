@@ -286,6 +286,9 @@ class ClaudeSession(AgentSession):
         super().__init__(adapter, workspace, emit, resume)
         self.proc: subprocess.Popen | None = None
         self._cancelled = False
+        # held from `busy = True` until the new process is in `self.proc`, so the previous
+        # turn's reader cannot mistake the new turn for its own and clear `busy`
+        self._turn_lock = threading.Lock()
 
     def send(self, text: str, images: list[str] = ()) -> None:
         # reference images are named in the prompt; Claude Code's Read tool shows them
@@ -308,11 +311,12 @@ class ClaudeSession(AgentSession):
         argv += ["--session-id", self.session_id] if first else ["--resume", self.session_id]
         sock = self.proxy.socket_path if self.proxy else self._start_proxy()
         cmd = a.sandbox_argv(argv, self.workspace, sock, a.env())
-        self.busy = True
-        self._cancelled = False
         self.emit({"type": "status", "state": "connecting", "detail": "starting Claude Code"})
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     text=True, start_new_session=True)
+        with self._turn_lock:
+            self.busy = True
+            self._cancelled = False
+            self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         text=True, start_new_session=True)
         assert self.proc.stdin is not None
         self.proc.stdin.write(text)
         self.proc.stdin.close()
@@ -330,9 +334,10 @@ class ClaudeSession(AgentSession):
                 continue
             finished = self._handle(ev) or finished
         rc = proc.wait()
-        if proc is not self.proc:
-            return  # a later turn owns the session state now
-        self.busy = False
+        with self._turn_lock:
+            if proc is not self.proc:
+                return  # a later turn owns the session state now
+            self.busy = False
         if self._cancelled:
             self.emit({"type": "error", "kind": "cancelled", "message": "Cancelled.", "recoverable": True})
         elif not finished:
@@ -668,10 +673,11 @@ class FakeSession(ClaudeSession):
         else:
             argv = [str(Path(sys.executable).resolve()), "-I", str(FAKE_AGENT), "--session", self.session_id]
         cmd = a.sandbox_argv(argv, self.workspace, None, a.env())
-        self.busy = True
-        self._cancelled = False
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                     text=True, start_new_session=True)
+        with self._turn_lock:
+            self.busy = True
+            self._cancelled = False
+            self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                         text=True, start_new_session=True)
         assert self.proc.stdin is not None
         self.proc.stdin.write(text)
         self.proc.stdin.close()
