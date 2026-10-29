@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  engine:
+    name: Engine tests
+    runs-on: ubuntu-24.04
+    env:
+      PANDOC_VERSION: "3.11"
+      TYPST_VERSION: "0.15.1"
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+      - name: System tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends poppler-utils bubblewrap libreoffice-writer
+          # Ubuntu 24.04 blocks unprivileged user namespaces, which the agent sandbox needs
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          curl -Ls "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-amd64.tar.gz" | sudo tar -xz -C /opt
+          sudo ln -s "/opt/pandoc-${PANDOC_VERSION}/bin/pandoc" /usr/local/bin/pandoc
+          curl -Ls "https://github.com/typst/typst/releases/download/v${TYPST_VERSION}/typst-x86_64-unknown-linux-musl.tar.xz" | sudo tar -xJ -C /opt
+          sudo ln -s /opt/typst-x86_64-unknown-linux-musl/typst /usr/local/bin/typst
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+      - run: uv run livery tools
+      - run: uv run pytest -q
+
+  app:
+    name: App typecheck and build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run build

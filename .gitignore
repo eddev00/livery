@@ -7,3 +7,6 @@ app/dist/
 engine/.venv/
 __pycache__/
 *.pyc
+
+# tool caches
+.impeccable/
