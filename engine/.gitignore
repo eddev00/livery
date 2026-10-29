@@ -6,5 +6,5 @@ __pycache__/
 *.pyc
 .pytest_cache/
 tests/fixtures/_build/
-fonts/*.zip
+/fonts/
 .claude/settings.local.json
