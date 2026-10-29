@@ -2,6 +2,7 @@
 name = "livery"
 version = "0.1.0"
 description = "Batch-restyle Word documents through a Typst template, with content-integrity safeguards."
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
     "rich>=13",

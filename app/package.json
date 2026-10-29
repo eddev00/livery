@@ -6,7 +6,7 @@
   "private": true,
   "main": "dist/electron/main.js",
   "author": "Livery",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "dev": "npm run build:electron && vite build && electron .",
     "build:electron": "node scripts/build-electron.mjs",

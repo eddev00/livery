@@ -1,7 +1,7 @@
 # Livery
 
 [![CI](https://github.com/eddev00/livery/actions/workflows/ci.yml/badge.svg)](https://github.com/eddev00/livery/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
 A Linux desktop app for restyling batches of Word documents with an AI design assistant, where
 **the assistant never sees your documents** and **no PDF leaves the app unless every word of the
@@ -150,4 +150,13 @@ screenshots in this README come from that run.
 
 ## License
 
-[MIT](LICENSE). The bundled Source Sans 3 fonts are under the SIL Open Font License 1.1.
+Copyright (C) 2026 eddev00
+
+Livery is free software: you can redistribute it and/or modify it under the terms of the
+[GNU Affero General Public License](LICENSE) as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version. It is distributed
+without any warranty; see the license for details.
+
+The bundled Source Sans 3 fonts (`app/src/fonts`, `engine/template/assets/fonts`,
+`engine/livery/desktop/neutral/assets/fonts`) are by Adobe under the SIL Open Font
+License 1.1, included next to them as `SourceSans3-LICENSE.md`.
