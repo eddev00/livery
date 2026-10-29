@@ -373,7 +373,7 @@
   // ------------------------------------------------------------ lists & misc
   let li = t.text.list
   let list-spacing = _len(li.leading) + _len(li.space_after)
-  let marker-colors = li.at("marker_colors", default: ("brand_red", "#000000", "#000000"))
+  let marker-colors = li.at("marker_colors", default: ("brand", "#000000", "#000000"))
   let marker(c) = if li.at("marker_shape", default: "square") == "square" {
     box(baseline: -0.05em, square(size: _len(li.at("marker_size", default: "0.36em")), fill: _color(t, c)))
   } else {

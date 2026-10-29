@@ -15,7 +15,7 @@
     #h(1fr)
     #counter(page).display("1 / 1", both: true)
   ])
-#set text(font: "Dubai", size: 10.5pt, fill: rgb("#262626"))
+#set text(font: "Source Sans 3", size: 10.5pt, fill: rgb("#262626"))
 #set par(justify: false, leading: 0.6em, spacing: 0.9em)
 #show heading.where(level: 1): it => block(above: 1.6em, below: 0.7em)[
   #text(size: 16pt, weight: "bold", fill: accent)[#it.body]

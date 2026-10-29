@@ -20,8 +20,8 @@ header_rule = false            # thin line under the running header
 number_format = "1"            # Typst numbering pattern for the page number ("1 / 1" for "3 / 42")
 
 [fonts]
-body = "Dubai"                 # files in template/assets/fonts are found automatically
-heading = "Dubai"
+body = "Source Sans 3"                 # files in template/assets/fonts are found automatically
+heading = "Source Sans 3"
 mono = "DejaVu Sans Mono"
 mono_size = "9pt"
 
@@ -44,7 +44,7 @@ leading = "0.65em"
 space_after = "2pt"            # between items
 marker_shape = "square"        # "square" (drawn, no font glyph needed) or any text such as "•"
 marker_size = "0.36em"
-marker_colors = ["brand_red", "#000000", "#000000"]   # level 1, level 2, deeper
+marker_colors = ["brand", "#000000", "#000000"]   # level 1, level 2, deeper
 marker_gap = "1em"           # space between the bullet and its text
 indent = "1em"                 # indent of the bullet from the left margin (adds up per nesting level)
 
@@ -56,14 +56,14 @@ color = "#404040"
 [text.h1]                      # Chapter
 size = "18pt"
 weight = "bold"
-color = "brand_red"
+color = "brand"
 space_before = "24pt"
 space_after = "12pt"
 
 [text.h2]                      # first level under a section
 size = "14pt"
 weight = "bold"
-color = "#D9222A"
+color = "#9A3624"
 space_before = "18pt"
 space_after = "6pt"
 
@@ -82,9 +82,9 @@ space_before = "9pt"
 space_after = "3pt"
 
 [colors]
-brand_red = "#ED1C24"          # ASSUMPTION: the document palette lists #62191C, #BC1C20, #ED1C24; adjust
-accent = "#1F4E79"             # chapter pages, table headers, links, rules
-accent_soft = "#DCE6F1"        # zebra rows, quote background
+brand = "#B8432F"              # matches the band in assets/cover-*.png
+accent = "#2F3A4A"             # chapter pages, table headers, links, rules
+accent_soft = "#E6E9EE"        # zebra rows, quote background
 text = "#1A1A1A"
 muted = "#666666"
 rule = "#BFBFBF"
@@ -108,16 +108,16 @@ enabled = true                 # every level-1 heading opens a separator page
 fill = ""                      # background colour of the section cover ("" for a white page)
 band = false                   # coloured vertical band on the left edge (only when fill = "")
 number_size = "126pt"
-number_font = "29LT Bukra"     # 29LT Bukra Condensed SemiBold
+number_font = "Source Sans 3"
 number_weight = 600
-number_stretch = "75%"
+number_stretch = "100%"
 title_size = "40pt"
-title_font = "Dubai"
+title_font = "Source Sans 3"
 number_title_gap = "-2.2em"
 block_bottom = "3cm"           # the number + title block sits this far above the page bottom (footer excluded)    # space between the number and the title (negative tightens; the number's glyph box has room below it)
-number_color = "brand_red"     # the number uses the same colour as the section title (h1 color)
-title_color = "brand_red"
-background = "assets/chapter-background.png"   # "" for none; path relative to the template folder
+number_color = "brand"     # the number uses the same colour as the section title (h1 color)
+title_color = "brand"
+background = ""               # "" for none; an image path relative to the template folder
 background_height = "33cm"     # image height; width follows the image's aspect ratio (use background_width instead to size by width)
 background_center_x = "0%"     # horizontal position of the image's centre, measured from the left page edge
 background_bottom = "20%"      # distance from the page bottom up to the image's bottom edge (the image extends upward)
@@ -180,22 +180,22 @@ background = ""                # full-bleed image, path relative to the template
 background_bleed = "2.86%"     # the image is drawn this much larger than the page and centred, so soft image edges never show
                                # 2.86% of the A4 width = 6mm, i.e. a 3mm bleed on the left and right (4.2mm top and bottom)
 logo = ""                      # path relative to the template folder, e.g. "assets/logo.png"
-# The label above the title in the red band is the department name ([document]
+# The label above the title in the band is the department name ([document]
 # department_name, --department-name per build); it uses the dept_text_* style below.
 label_gap = "0.67cm"           # distance from the label's baseline to the top of the title's capitals
 subtitle = ""
-title_font = "Dubai"
+title_font = "Source Sans 3"
 title_size = "28pt"
 title_line_height = "38pt"
 title_weight = "bold"
 title_color = "#FFFFFFCC"      # white at 80% opacity
-title_top = "40%"              # top of the title block, as a share of the page height (the red band)
+title_top = "40%"              # top of the title block, as a share of the page height (the band)
 title_left = "1.68cm"
 title_width = "70%"
 number = "01"                  # the big number in the bottom-right corner; override per build with --number
-number_font = "29LT Bukra"     # 29LT Bukra Condensed SemiBold (template/assets/fonts/29LTBukraCd-SmBd.otf)
+number_font = "Source Sans 3"
 number_weight = 600
-number_stretch = "75%"
+number_stretch = "100%"
 number_size = "388pt"
 number_color_start = "#FFFFFF99"   # gradient start stop (white at 60%) ...
 number_color_end = "#ffffff0f"     # ... to end stop (white at 2%); set both to the same value for a flat colour
@@ -209,13 +209,13 @@ footer = false                 # the big number occupies the corner where the pa
 dept_left = "1.7cm"           # distance of the department block from the left page edge
 dept_bottom = "2.3cm"         # distance from the bottom page edge
 dept_symbol_size = "78pt"
-dept_symbol_font = "29LT Bukra"    # 29LT Bukra Condensed SemiBold (no Condensed Bold file exists; 600 at 75% is the heaviest condensed weight)
+dept_symbol_font = "Source Sans 3"
 dept_symbol_weight = 600
-dept_symbol_stretch = "75%"
+dept_symbol_stretch = "100%"
 dept_symbol_gap = "1cm"          # space between the symbol and the department name below it
 dept_text_size = "14pt"          # department name and version
 dept_text_line_height = "21pt"
-dept_text_font = "Dubai"
+dept_text_font = "Source Sans 3"
 dept_text_weight = "bold"
 dept_text_uppercase = true
 dept_text_color = "#FFFFFF66"    # white at 40% opacity (defaults to dept_color)
@@ -227,35 +227,35 @@ dept_symbol_color = "#FFFFFF66"   # the symbol only: white at 40% opacity (defau
 # Cover variants: each table overrides any [cover] key above for documents built
 # with that variant. `description` is shown next to the name when choosing.
 [cover.variants.small]
-description = "short red band"
+description = "short band"
 background = "assets/cover-small.png"
 
 [cover.variants.large]
-description = "tall red band, room for a longer title"
+description = "tall band, room for a longer title"
 background = "assets/cover-large.png"
 
 # Right side bearing of each digit in the number font, in em (from the font's
 # metrics). The template shifts the number right by the bearing of its last
 # digit so the ink, not the glyph box, touches the edge.
 [cover.number_right_bearing]
-"0" = 0.038
-"1" = 0.072
-"2" = 0.032
-"3" = 0.038
-"4" = 0.024
-"5" = 0.054
+"0" = 0.041
+"1" = 0.056
+"2" = 0.045
+"3" = 0.050
+"4" = 0.026
+"5" = 0.048
 "6" = 0.038
-"7" = 0.035
-"8" = 0.038
-"9" = 0.038
+"7" = 0.042
+"8" = 0.041
+"9" = 0.046
 
 [toc]
 enabled = true
 title = "Table of Content"
 title_size = "40pt"
-title_font = "Dubai"
-title_color = "brand_red"      # same red as the section titles
-section_color = "brand_red"    # colour of the level-1 (section) entries
+title_font = "Source Sans 3"
+title_color = "brand"      # same colour as the section titles
+section_color = "brand"    # colour of the level-1 (section) entries
 level2_color = "#000000"       # colour of the entries directly under a section
 deeper_color = "#404040"       # colour of every deeper entry
 leader_section = "."           # repeated between a section entry and its page number
