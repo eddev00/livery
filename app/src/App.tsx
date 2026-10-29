@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError, bridge } from "./api";
 import { Chat, COMMANDS } from "./components/Chat";
+import { MAX_IMAGES, prepareImage } from "./images";
 import { MatchDialog, SetupDialog, type Candidate } from "./components/Dialogs";
 import { History, ProjectTree, ProposalBar, recheckText, ReportPanel, Stats, Treatments } from "./components/Panels";
 import { PdfView } from "./components/PdfView";
 import type { Spot } from "./checks";
 import type {
-  AgentStatus, ChatEntry, DesignInfo, DocumentInfo, Job, MapElement, ProjectStats, ProjectSummary, Proposal, Report, Selection, SelectionMap,
+  AgentStatus, ChatEntry, DesignInfo, DocumentInfo, Job, MapElement, ProjectStats, ProjectSummary, Proposal, RefImage, Report, Selection, SelectionMap,
 } from "./types";
 
 // "approved": a document marked done, as approved (left) next to the accepted design (right)
-type View = "accepted" | "original" | "synthetic" | "proposal" | "compare" | "approved";
+// "vs-original": the Word file as LibreOffice lays it out (left) next to the accepted design (right)
+type View = "accepted" | "original" | "vs-original" | "synthetic" | "proposal" | "compare" | "approved";
 type Toast = { id: number; text: string; bad?: boolean; action?: { label: string; run: () => void } };
 
 const CHAT_DEFAULT = 390, CHAT_MIN = 300;
@@ -30,6 +32,7 @@ export function App() {
   const [view, setView] = useState<View>("accepted");
   const [zoom, setZoom] = useState<number | "fit">("fit");
   const [selections, setSelections] = useState<Selection[]>([]);
+  const [images, setImages] = useState<RefImage[]>([]);
   const [agents, setAgents] = useState<AgentStatus[]>([]);
   const [provider, setProvider] = useState(() => localStorage.getItem("we:provider") ?? "claude");
   const [entries, setEntries] = useState<ChatEntry[]>([]);
@@ -44,6 +47,15 @@ export function App() {
   const [chatWidth, setChatWidth] = useState(() => clampChat(Number(localStorage.getItem("we:chatWidth")) || CHAT_DEFAULT));
 
   useEffect(() => { localStorage.setItem("we:chatWidth", String(chatWidth)); }, [chatWidth]);
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem("we:sidebar") !== "closed");
+  useEffect(() => { localStorage.setItem("we:sidebar", sidebarOpen ? "open" : "closed"); }, [sidebarOpen]);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") { e.preventDefault(); setSidebarOpen((o) => !o); }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
   useEffect(() => {
     const onResize = () => setChatWidth((w) => clampChat(w));
     window.addEventListener("resize", onResize);
@@ -142,6 +154,7 @@ export function App() {
     if (!engine.ready || !projectId) return;
     localStorage.setItem("we:project", projectId);
     setSelections([]);
+    setImages([]);
     setView("accepted");
     void api.get<{ name: string }>(`/api/projects/${projectId}`).then((p) => setProjectName(p.name)).catch(fail);
     void Promise.all([loadDocs(), loadDesign(), loadProposals()]).catch(fail);
@@ -264,7 +277,8 @@ export function App() {
 
   const canCompareApproved = doc?.review?.state === "recheck" && doc.review.reason === "design";
   const effectiveView: View = (!pending && ["proposal", "compare", "synthetic"].includes(view)) || (view === "approved" && !canCompareApproved)
-    ? "accepted" : view;
+    || (view === "vs-original" && !doc?.has_original) ? "accepted" : view;
+  const twoPanes = effectiveView === "compare" || effectiveView === "approved" || effectiveView === "vs-original";
   const buildKey = `${doc?.build?.state}-${doc?.build?.revision}-${pending?.id}-${JSON.stringify(pending?.real?.[docId ?? ""] ?? null)}-${doc?.review?.state}`;
 
   useEffect(() => {
@@ -289,6 +303,9 @@ export function App() {
         rep = (await api.get<{ report: Report | null }>(`${d}/report`).catch(() => ({ report: null }))).report;
       } else if (effectiveView === "original") {
         a = { pdf: await api.pdf(`${d}/pdf?kind=original`), map: null };
+      } else if (effectiveView === "vs-original") {
+        [a, b] = await Promise.all([api.pdf(`${d}/pdf?kind=original`).then((pdf) => ({ pdf, map: null })), accepted()]);
+        rep = (await api.get<{ report: Report | null }>(`${d}/report`).catch(() => ({ report: null }))).report;
       } else if (effectiveView === "synthetic") {
         a = { pdf: await api.pdf(`${d}/pdf?kind=synthetic&${q}`), map: null };
       } else if (effectiveView === "approved") {
@@ -369,10 +386,13 @@ export function App() {
   async function send(text: string): Promise<boolean> {
     if (!base) return false;
     // Show the message immediately; take it back out if the post fails.
-    const entry: ChatEntry = { role: "user", text, attachments: selections.map((s) => s.label) };
+    const entry: ChatEntry = { role: "user", text, attachments: selections.map((s) => s.label), images: images.map((i) => i.url) };
     setEntries((x) => [...x, entry]);
     try {
-      await api.post(`${base}/chat/${provider}/messages`, { text, selections: selections.map(({ doc, element }) => ({ doc, element })) });
+      await api.post(`${base}/chat/${provider}/messages`, {
+        text, selections: selections.map(({ doc, element }) => ({ doc, element })), images: images.map((i) => i.data),
+      });
+      setImages([]); // sent once; the assistant keeps them in its workspace
       setBusy(true);
       setPhase(null);
       return true;
@@ -384,6 +404,20 @@ export function App() {
       } else fail(e);
       return false;
     }
+  }
+
+  async function addImages(files: File[]) {
+    const room = MAX_IMAGES - images.length;
+    if (files.length > room) toast(`Attach at most ${MAX_IMAGES} images to a message.`, true);
+    const ready: RefImage[] = [];
+    for (const f of files.slice(0, Math.max(room, 0))) {
+      try {
+        ready.push(await prepareImage(f));
+      } catch {
+        toast(`${f.name || "The image"} could not be read.`, true);
+      }
+    }
+    if (ready.length) setImages((x) => [...x, ...ready].slice(0, MAX_IMAGES));
   }
 
   async function runCommand(name: string): Promise<boolean> {
@@ -469,10 +503,14 @@ export function App() {
 
   return (
     <div className="app">
-      <main className="workspace" style={{ "--chat-w": `${chatWidth}px` } as React.CSSProperties}>
-        <aside className="left">
+      <main className={`workspace${sidebarOpen ? "" : " no-sidebar"}`} style={{ "--chat-w": `${chatWidth}px` } as React.CSSProperties}>
+        {sidebarOpen && <aside className="left">
           <div className="sidebar-head">
             <div className="brand">Livery</div>
+            <button className="icon-btn" onClick={() => setSidebarOpen(false)} title="Hide sidebar (Ctrl+B)" aria-label="Hide sidebar">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8"
+                strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
+            </button>
           </div>
           <ProjectTree projects={projects} current={projectId} currentDoc={docId}
             docsOf={(id) => (id === projectId ? docs : otherDocs[id])} expanded={expanded}
@@ -511,16 +549,23 @@ export function App() {
             }} />
           <div className="sidebar-foot">
             <button className="settings-btn" onClick={() => setSetupOpen(true)}>
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4"
+              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8"
                 strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="8" cy="8" r="2.2" />
-                <path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1" />
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
               </svg>
               Settings
             </button>
+            <button className="repo-link" title="github.com/eddev00/livery"
+              onClick={() => void bridge().openExternal("https://github.com/eddev00/livery")}>
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="currentColor">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+              </svg>
+              GitHub
+            </button>
             {!sandboxOk && <button className="badge FAIL" onClick={() => setSetupOpen(true)}>Isolation unavailable</button>}
           </div>
-        </aside>
+        </aside>}
 
         <section className="center">
           {pending && (
@@ -545,10 +590,18 @@ export function App() {
               onView={(m) => setView(m)} />
           )}
           <div className="preview-bar">
+            {!sidebarOpen && (
+              <button className="icon-btn" onClick={() => setSidebarOpen(true)} title="Show sidebar (Ctrl+B)" aria-label="Show sidebar">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8"
+                strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></svg>
+              </button>
+            )}
             <div className="segmented small">
               <button className={effectiveView === "accepted" ? "on" : ""} onClick={() => setView("accepted")}>Accepted</button>
               <button className={effectiveView === "original" ? "on" : ""} disabled={!doc?.has_original} onClick={() => setView("original")}
                 title={doc?.has_original ? "The Word file as LibreOffice lays it out" : "Install LibreOffice to see the original layout"}>Original</button>
+              <button className={effectiveView === "vs-original" ? "on" : ""} disabled={!doc?.has_original} onClick={() => setView("vs-original")}
+                title={doc?.has_original ? "Original (left) next to Accepted (right)" : "Install LibreOffice to see the original layout"}>Side by side</button>
               {pending && <>
                 <button className={effectiveView === "synthetic" ? "on" : ""} onClick={() => setView("synthetic")}>Synthetic</button>
                 <button className={effectiveView === "proposal" ? "on" : ""} onClick={() => setView("proposal")}>Proposed</button>
@@ -587,22 +640,23 @@ export function App() {
           )}
           {effectiveView === "synthetic" && <div className="hint">Synthetic preview: lorem-ipsum twin of this document with the proposed design — what the assistant
             saw. Render with real content to check the actual pages.</div>}
-          <div className={`preview ${effectiveView === "compare" || effectiveView === "approved" ? "compare" : ""}`}>
+          <div className={`preview ${twoPanes ? "compare" : ""}`}>
             <div className="preview-pane">
               {effectiveView === "compare" && <div className="pane-label">Accepted</div>}
+              {effectiveView === "vs-original" && <div className="pane-label">Original</div>}
               {effectiveView === "approved" && <div className="pane-label">As approved ({doc?.review?.approved?.revision})</div>}
-              <PdfView data={pdfA} map={effectiveView === "original" || effectiveView === "synthetic" || effectiveView === "approved" ? null : mapA} zoom={zoom} selected={selectedIds}
+              <PdfView data={pdfA} map={effectiveView === "original" || effectiveView === "vs-original" || effectiveView === "synthetic" || effectiveView === "approved" ? null : mapA} zoom={zoom} selected={selectedIds}
                 focus={effectiveView === "accepted" || effectiveView === "proposal" ? focus : null}
                 onSelect={select} onUnsupported={(el) => toast(`${el.label}: ${el.kind}s can't be attached yet. Select a heading, paragraph or table.`)}
-                emptyText={!doc ? "No document selected." : effectiveView === "original" ? "No original rendering (LibreOffice not installed or failed)."
+                emptyText={!doc ? "No document selected." : effectiveView === "original" || effectiveView === "vs-original" ? "No original rendering (LibreOffice not installed or failed)."
                   : effectiveView === "synthetic" ? "No synthetic preview for this document in this proposal."
                   : effectiveView === "proposal" ? "Not rendered with real content yet." : "Rendering…"} />
             </div>
-            {(effectiveView === "compare" || effectiveView === "approved") && (
+            {twoPanes && (
               <div className="preview-pane">
-                <div className="pane-label">{effectiveView === "approved" ? "Now" : "Proposed"}</div>
+                <div className="pane-label">{effectiveView === "approved" ? "Now" : effectiveView === "vs-original" ? "Accepted" : "Proposed"}</div>
                 <PdfView data={pdfB} map={mapB} zoom={zoom} selected={selectedIds} onSelect={select} focus={focus}
-                  emptyText={effectiveView === "approved" ? "Rendering…" : "Not rendered with real content yet."} />
+                  emptyText={effectiveView === "compare" ? "Not rendered with real content yet." : "Rendering…"} />
               </div>
             )}
           </div>
@@ -617,6 +671,7 @@ export function App() {
             onProvider={(p) => { setProvider(p); setStreaming(""); }}
             entries={entries} streaming={streaming} busy={busy} phase={phase}
             attachments={selections} onRemoveAttachment={(s) => setSelections((x) => x.filter((y) => !(y.doc === s.doc && y.element === s.element)))}
+            images={images} onAddImages={(f) => void addImages(f)} onRemoveImage={(id) => setImages((x) => x.filter((i) => i.id !== id))}
             onSend={send} onCancel={() => void api.post(`${base}/chat/cancel`).catch(fail)}
             onApproval={(id, allow) => void api.post(`${base}/chat/approvals/${id}`, { allow }).catch(fail)}
             onSetup={() => setSetupOpen(true)} onCommand={runCommand} disabledReason={disabledReason} />

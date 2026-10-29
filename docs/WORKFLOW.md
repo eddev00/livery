@@ -33,6 +33,17 @@ What you type is sent to the assistant's provider (Anthropic for Claude Code, Op
 as the note under the message box says. Changes to a single element stay on that element
 unless you ask for something broader ("all tables like this", "every heading").
 
+To show a look instead of describing it, attach a reference image: the picture button in the
+message box, or paste or drop an image there (PNG, JPEG, WebP or GIF, up to four per message).
+*"Make all tables look like this"* with a screenshot of a template table works well. The
+assistant matches fills, colours, rules, weights and spacing with the fonts Livery has, and says
+what it could not match. Images from earlier messages stay available in the same conversation
+("like the image from before"); a new conversation starts without them.
+
+An image is sent to the provider **as it is**: unlike your documents, it is not replaced by
+lorem ipsum. Livery only removes its metadata. Use a template, a style guide or a page that
+holds nothing confidential.
+
 **Cancel** stops a running request; the proposal so far is kept. Switching between Claude Code
 and Codex starts a separate conversation from the accepted design.
 

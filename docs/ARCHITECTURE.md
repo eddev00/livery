@@ -69,6 +69,10 @@ tool activity, approvals, done, errors classified as auth/quota/cancelled/exited
   `thread/start|resume`, `turn/start`, `turn/interrupt`, notifications for deltas, items and
   turn completion, server requests for approvals; profile via `CODEX_HOME`.
 
+Reference images attached to a message are re-encoded (`workspace.normalize_reference`) and
+saved in the workspace's `references/`. The prompt names them; Claude Code opens them with its
+Read tool, and Codex also receives them as `localImage` inputs on `turn/start`.
+
 After each turn the workspace design is validated, re-keyed from `doc-NN` to real document
 IDs, merged with the base and stored as the session's proposal, and the twins are rendered
 for the synthetic preview. When the agent changed `mapping.toml`, the samples are converted

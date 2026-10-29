@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { AgentStatus, ChatEntry, Selection } from "../types";
+import { IMAGE_ACCEPT, imageFiles, MAX_IMAGES } from "../images";
+import type { AgentStatus, ChatEntry, RefImage, Selection } from "../types";
 import { AgentIcon } from "./AgentIcon";
 
 interface Props {
@@ -12,6 +13,9 @@ interface Props {
   phase: string | null;
   attachments: Selection[];
   onRemoveAttachment: (s: Selection) => void;
+  images: RefImage[];
+  onAddImages: (files: File[]) => void;
+  onRemoveImage: (id: string) => void;
   onSend: (text: string) => Promise<boolean>;
   onCancel: () => void;
   onApproval: (id: string, allow: boolean) => void;
@@ -30,6 +34,8 @@ export function Chat(p: Props) {
   const [text, setText] = useState("");
   const list = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const [dropping, setDropping] = useState(false);
 
   useEffect(() => {
     list.current?.scrollTo({ top: list.current.scrollHeight });
@@ -69,6 +75,7 @@ export function Chat(p: Props) {
 
   const current = p.providers.find((a) => a.provider === p.provider);
   const needsSignIn = current && (!current.installed || !current.logged_in);
+  const canAttach = !p.disabledReason && p.images.length < MAX_IMAGES;
 
   return (
     <div className="chat">
@@ -106,8 +113,21 @@ export function Chat(p: Props) {
       </div>
       )}
 
-      <div className="composer">
-        {p.attachments.length > 0 && (
+      <div className={`composer${dropping ? " dropping" : ""}`}
+        onDragOver={(e) => {
+          if (!canAttach || !Array.from(e.dataTransfer.items).some((i) => i.kind === "file")) return;
+          e.preventDefault();
+          setDropping(true);
+        }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropping(false); }}
+        onDrop={(e) => {
+          setDropping(false);
+          if (!canAttach) return;
+          e.preventDefault();
+          const files = imageFiles(e.dataTransfer.files);
+          if (files.length) p.onAddImages(files);
+        }}>
+        {(p.attachments.length > 0 || p.images.length > 0) && (
           <div className="chips">
             {p.attachments.map((s) => (
               <span className="chip" key={`${s.doc}/${s.element}`}>
@@ -115,6 +135,19 @@ export function Chat(p: Props) {
                 <button aria-label={`Remove ${s.label}`} onClick={() => p.onRemoveAttachment(s)}>×</button>
               </span>
             ))}
+            {p.images.map((img, i) => (
+              <span className="chip chip-image" key={img.id}>
+                <img src={img.url} alt="" />
+                Image {i + 1}
+                <button aria-label={`Remove image ${i + 1}`} onClick={() => p.onRemoveImage(img.id)}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+        {p.images.length > 0 && (
+          <div className="composer-note">
+            Images go to {current?.company ?? "the assistant's provider"} as they are, unlike your documents. Don't attach
+            pictures of confidential pages.
           </div>
         )}
         <div className="composer-field">
@@ -137,6 +170,12 @@ export function Chat(p: Props) {
           placeholder={p.disabledReason ?? (p.busy ? "Esc to stop" : "Describe a change, or / for commands")}
           disabled={!!p.disabledReason}
           onChange={(e) => setText(e.target.value)}
+          onPaste={(e) => {
+            const files = imageFiles(e.clipboardData.files);
+            if (!files.length || !canAttach) return;
+            e.preventDefault();
+            p.onAddImages(files);
+          }}
           onKeyDown={(e) => {
             if (menu.length > 0) {
               const pick = menu[Math.min(menuIndex, menu.length - 1)];
@@ -164,6 +203,20 @@ export function Chat(p: Props) {
           }}
           rows={1}
         />
+        <input ref={picker} type="file" accept={IMAGE_ACCEPT} multiple hidden
+          onChange={(e) => { p.onAddImages(imageFiles(e.target.files)); e.target.value = ""; }} />
+        <button
+          className="composer-attach"
+          aria-label="Attach a reference image"
+          title={p.images.length >= MAX_IMAGES ? `At most ${MAX_IMAGES} images` : "Attach a reference image (or paste or drop one)"}
+          disabled={!canAttach}
+          onClick={() => picker.current?.click()}
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor"
+            strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="12" height="10" rx="1.5" /><circle cx="6" cy="6.5" r="1.2" /><path d="m3 12 3.5-3.5 2.5 2.5 1.5-1.5L13.5 12" />
+          </svg>
+        </button>
         <button
           className={`composer-key${text.trim() || p.busy ? " ready" : ""}`}
           aria-label={p.busy ? "Stop (Esc)" : "Send (Enter)"}
@@ -209,6 +262,9 @@ function Entry({ e, onApproval, onSetup }: { e: ChatEntry; onApproval: (id: stri
   return (
     <div className={`msg msg-${e.role}`}>
       {e.attachments && e.attachments.length > 0 && <div className="msg-attachments">{e.attachments.join(" · ")}</div>}
+      {e.images && e.images.length > 0 && (
+        <div className="msg-images">{e.images.map((src, i) => <img key={i} src={src} alt={`Image ${i + 1}`} />)}</div>
+      )}
       <div className="pre">{e.text}</div>
     </div>
   );
