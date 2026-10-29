@@ -1,0 +1,3 @@
+# How Word documents are read into headings, paragraphs and tables (docs/MAPPING.md).
+# Empty: the app's default conversion.
+version = 1

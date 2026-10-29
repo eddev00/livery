@@ -1,0 +1,71 @@
+{
+  "name": "livery-desktop",
+  "productName": "Livery",
+  "version": "1.0.0",
+  "description": "Restyle Word documents with an AI design assistant, verified and private.",
+  "private": true,
+  "main": "dist/electron/main.js",
+  "author": "Livery",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "npm run build:electron && vite build && electron .",
+    "build:electron": "node scripts/build-electron.mjs",
+    "build:renderer": "vite build",
+    "build": "npm run typecheck && npm run build:electron && npm run build:renderer",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "electron .",
+    "dist": "npm run build && electron-builder --linux AppImage"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  },
+  "dependencies": {
+    "pdfjs-dist": "6.4.299",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "build": {
+    "appId": "app.livery.desktop",
+    "productName": "Livery",
+    "directories": {
+      "output": "../dist",
+      "buildResources": "build-resources"
+    },
+    "files": [
+      "dist/electron/**",
+      "dist/renderer/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../build/engine",
+        "to": "engine"
+      },
+      {
+        "from": "../build/tools",
+        "to": "tools"
+      }
+    ],
+    "asar": true,
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Office",
+      "executableName": "livery",
+      "synopsis": "Restyle Word documents with an AI design assistant",
+      "artifactName": "Livery-${version}-${arch}.AppImage"
+    },
+    "appImage": {
+      "artifactName": "Livery-${version}-x86_64.AppImage"
+    }
+  }
+}

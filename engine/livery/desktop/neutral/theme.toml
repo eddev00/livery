@@ -1,0 +1,142 @@
+# Neutral Livery theme: the starting design of every desktop project.
+#
+# Only redistributable fonts: Source Sans 3 (SIL OFL, shipped in assets/fonts) and the
+# fonts Typst embeds (Libertinus Serif, New Computer Modern, DejaVu Sans Mono).
+# Lengths are Typst lengths as strings ("11pt", "2.5cm"); colours are hex strings or
+# the name of an entry in [colors].
+#
+# This file is the project theme, the first of three design levels. Named treatments
+# and element overrides (design.json) are applied on top of it, in that order.
+
+[document]
+department = ""
+department_name = ""
+version = ""
+
+[fonts]
+body = "Source Sans 3"
+heading = "Source Sans 3"
+mono = "DejaVu Sans Mono"
+# every font a treatment may name; the font check treats them all as theme fonts
+available = ["Source Sans 3", "Libertinus Serif", "New Computer Modern", "DejaVu Sans Mono"]
+
+[colors]
+text = "#1F2328"
+accent = "#2F5D8A"
+muted = "#6A737D"
+rule = "#C9CED6"
+soft = "#F2F4F7"
+
+[page]
+paper = "a4"
+margin_top = "2.5cm"
+margin_bottom = "2.5cm"
+margin_left = "2.5cm"
+margin_right = "2.5cm"
+
+[header]
+enabled = true
+text = "{title}"           # {title} is the document title
+align = "right"            # "left" | "center" | "right"
+size = "8.5pt"
+color = "muted"
+rule = false
+
+[footer]
+enabled = true
+text = ""                  # e.g. "{title}"
+page_numbers = true
+number_format = "1 / 1"
+align = "center"
+size = "8.5pt"
+color = "muted"
+
+[title]
+enabled = true             # the document title as a block on the first page
+size = "22pt"
+weight = "semibold"
+color = "text"
+space_after = "18pt"
+
+[typography]
+lang = "en"
+hyphenate = true
+ligatures = true
+justify = false
+first_line_indent = "0pt"
+
+[headings]
+numbering = ""             # e.g. "1.1"; "" for none
+
+[text.body]
+size = "10.5pt"
+weight = "regular"
+color = "text"
+leading = "0.62em"
+space_after = "0.75em"
+
+[text.h1]
+size = "17pt"
+weight = "semibold"
+color = "accent"
+space_before = "22pt"
+space_after = "8pt"
+
+[text.h2]
+size = "13.5pt"
+weight = "semibold"
+color = "text"
+space_before = "16pt"
+space_after = "6pt"
+
+[text.h3]
+size = "11.5pt"
+weight = "semibold"
+color = "text"
+space_before = "12pt"
+space_after = "4pt"
+
+[text.h4]
+size = "10.5pt"
+weight = "semibold"
+color = "muted"
+space_before = "10pt"
+space_after = "3pt"
+
+[tables]
+column_widths = "fill"     # read by the converter: Word proportions stretched to the text width
+align = "left"
+font_size = "9.5pt"
+inset = "5pt"
+header_fill = "soft"
+header_color = "text"
+header_weight = "semibold"
+body_fill = ""
+stripe_fill = ""
+stroke_color = "rule"
+stroke_width = "0.5pt"
+rules = "grid"             # "grid" | "horizontal" | "header" | "none"
+
+[cover]
+variant = ""
+number_font = ""
+dept_symbol_font = ""
+
+[source]
+text_width_in = 6.3
+drop_styles = ["TOC Heading", "Table of Contents Heading", "toc heading"]
+drop_headings = ["Table of Contents", "Contents", "Table des matières", "Sommaire"]
+block_quotes = "unwrap"
+outline_level_headings = false
+heading_numbers = "keep"
+chapter_words = ["Section", "Chapter", "Chapitre", "Part", "Partie"]
+
+[style_map]
+"Title 1" = 1
+"Titre 1" = 1
+"Titre 2" = 2
+"Titre 3" = 3
+
+[desktop]
+# Bracket every block with invisible element markers so previews can be selected.
+instrument = true
