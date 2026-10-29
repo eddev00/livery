@@ -64,3 +64,12 @@ def test_unedited_folder_reverifies_clean(built_features, tmp_path):
     shutil.copytree(out_dir, copy)
     assert main(["verify", str(copy)]) == 0
     assert _report(copy)["status"] == "PASS"
+
+
+def test_reconcile_glued_words_sharing_a_letter():
+    # pdftotext keeps one of two identical letters that coincide when a cell overflows
+    r = V.reconcile(["SCELERISQUE", "EIUSMOD", "DUI", "torquent"], ["SCELERISQUE", "EIUSMODUI", "torquent"])
+    assert not r["missing"] and not r["extra"] and r["glued"] == ["EIUSMODUI"]
+    # a word that merely lost its first letter is still missing
+    r = V.reconcile(["EIUSMOD", "PUI"], ["EIUSMODUI"])
+    assert r["missing"] == ["PUI"]

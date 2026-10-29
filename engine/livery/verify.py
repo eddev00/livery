@@ -110,8 +110,11 @@ def reconcile(src_tokens: list[str], pdf_tokens: list[str]) -> dict[str, list[st
     words are glued when a cell overflows or spacing is tight ("SED CONSECTETUR"
     -> "SEDCONSECTETUR"), and a word broken at a line end may come back split
     ("dolore-magna" -> "dolore", "magna"; pieces of a word split inside a narrow
-    cell may even be interleaved with other cells). Both are recognised and
-    reported; whatever remains is genuinely missing or extra. Only PDF tokens in
+    cell may even be interleaved with other cells). When an overflowing word lands
+    on a neighbour so that two identical letters coincide, pdftotext keeps only one
+    of them (its fake-bold de-duplication): "EIUSMOD" + "DUI" -> "EIUSMODUI". A glued
+    token that differs only by such a shared letter is accepted too. All of these are
+    recognised and reported; whatever remains is genuinely missing or extra. Only PDF tokens in
     surplus over the source may serve as explanations, so a legitimate token is
     never cannibalised.
     """
@@ -121,6 +124,10 @@ def reconcile(src_tokens: list[str], pdf_tokens: list[str]) -> dict[str, list[st
     pdf = list(pdf_tokens)          # working copy; "" marks a consumed token
     glued: list[str] = []
     split: list[str] = []
+    # Letters peeled off next to a remainder: before[i] is the last letter of the word
+    # removed from the start of pdf[i], after[i] the first letter of one removed from its end.
+    before: dict[int, str] = {}
+    after: dict[int, str] = {}
 
     def usable(t: str) -> bool:
         return bool(t) and surplus[t] > 0
@@ -170,6 +177,10 @@ def reconcile(src_tokens: list[str], pdf_tokens: list[str]) -> dict[str, list[st
                 pdf[i] = rest
                 if rest:
                     surplus[rest] += 1
+                    if t.startswith(s):
+                        before[i] = s[-1]
+                    else:
+                        after[i] = s[0]
                 return True
         # (c) split into non-adjacent surplus tokens
         parts = decompose(s)
@@ -178,6 +189,25 @@ def reconcile(src_tokens: list[str], pdf_tokens: list[str]) -> dict[str, list[st
                 surplus[piece] -= 1
                 pdf[pdf.index(piece)] = ""
             split.append(s)
+            return True
+        # (d) glued with one letter shared with a neighbour already peeled off (see the
+        # docstring): "EIUSMODUI" minus "EIUSMOD" leaves "UI", which explains "DUI"
+        for i, t in enumerate(pdf):
+            if not usable(t) or len(s) < 2:
+                continue
+            at_start = before.get(i) == s[0] and t.startswith(s[1:])
+            if not at_start and not (after.get(i) == s[-1] and t.endswith(s[:-1])):
+                continue
+            # t is a remainder, so its glued original is already reported
+            rest = t[len(s) - 1:] if at_start else t[:len(t) - len(s) + 1]
+            surplus[t] -= 1
+            pdf[i] = rest
+            if rest:
+                surplus[rest] += 1
+                if at_start:
+                    before[i] = s[-1]
+                else:
+                    after[i] = s[0]
             return True
         return False
 
@@ -370,7 +400,7 @@ def pdf_fonts(pdf: Path) -> list[dict[str, str]]:
 
 
 def _font_family(pdf_name: str) -> str:
-    # "ABCDEF+Dubai-Bold-Identity-H" -> "Dubai"
+    # "ABCDEF+SourceSans3-Bold-Identity-H" -> "SourceSans3"
     name = pdf_name.split("+", 1)[-1]
     return name.split("-", 1)[0].split(",", 1)[0]
 
@@ -382,7 +412,7 @@ def check_fonts(pdf: Path, typst_warnings: list[str], theme_fonts: list[str]) ->
     if not_embedded:
         problems.append("fonts not embedded: " + ", ".join(not_embedded))
     wanted = {f.replace(" ", "").lower() for f in theme_fonts if f}
-    # PDF font names drop spaces and may carry a width suffix ("29LTBukraCd" for "29LT Bukra"):
+    # PDF font names drop spaces and may carry a width suffix ("SourceSans3Cd" for "Source Sans 3"):
     # a family counts as a theme font when either normalized name is a prefix of the other.
     def is_theme_font(family: str) -> bool:
         fam = family.replace(" ", "").lower()
