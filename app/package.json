@@ -1,7 +1,7 @@
 {
   "name": "livery-desktop",
   "productName": "Livery",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Restyle Word documents with an AI design assistant, verified and private.",
   "private": true,
   "main": "dist/electron/main.js",

@@ -95,7 +95,7 @@ docs/       setup, the designer's workflow, privacy and isolation, architecture
 Needs Docker and Node.js 20 or newer.
 
 ```
-packaging/build-appimage.sh          # -> dist/Livery-1.0.0-x86_64.AppImage
+packaging/build-appimage.sh          # -> dist/Livery-0.1.0-x86_64.AppImage
 packaging/test-clean.sh              # installs it in a fresh ubuntu:24.04 container and runs the
                                      # end-to-end smoke test (import, verify, select, agent loop
                                      # with the test agent in the sandbox, accept, export)

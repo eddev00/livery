@@ -2,16 +2,16 @@
 
 ## 1. Install
 
-Livery is one file, `Livery-1.0.0-x86_64.AppImage`, for 64-bit Linux with glibc 2.35 or
+Livery is one file, `Livery-0.1.0-x86_64.AppImage`, for 64-bit Linux with glibc 2.35 or
 newer (Ubuntu 22.04+, Debian 12+, Fedora 38+, Arch).
 
 ```
-chmod +x Livery-1.0.0-x86_64.AppImage
-./Livery-1.0.0-x86_64.AppImage
+chmod +x Livery-0.1.0-x86_64.AppImage
+./Livery-0.1.0-x86_64.AppImage
 ```
 
 If it does not start and mentions FUSE, install `libfuse2` (Ubuntu: `sudo apt install libfuse2t64`),
-or run it without FUSE: `./Livery-1.0.0-x86_64.AppImage --appimage-extract-and-run`.
+or run it without FUSE: `./Livery-0.1.0-x86_64.AppImage --appimage-extract-and-run`.
 
 Everything that converts and checks documents is inside the AppImage (Pandoc 3.11, Typst
 0.15.1, Poppler, the Livery engine, the fonts). Projects are stored in
