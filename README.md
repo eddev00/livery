@@ -5,7 +5,7 @@
 
 A Linux desktop app for restyling batches of Word documents with an AI design assistant, where
 **the assistant never sees your documents** and **no PDF leaves the app unless every word of the
-source is in it**.
+source is in it**. Windows and macOS releases are coming soon.
 
 Import `.docx` files, click a heading, paragraph or table in the preview, describe the change in
 the chat ("make every table header like this one, darker"), review the proposal against your real
