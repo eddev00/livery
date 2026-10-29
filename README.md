@@ -13,35 +13,59 @@ content, accept it, and export the whole batch as PDF.
 
 ![Select a table, ask for a change, compare, accept](docs/images/workflow.gif)
 
+## Why Livery
+
+- **Use coding agents on confidential documents without leaking them.** Claude Code or Codex
+  designs your documents, but only ever sees lorem-ipsum copies, inside a sandbox with no network
+  except its own API. Your real text never leaves your machine.
+- **Design freedom Word doesn't give you.** No style inheritance, no direct-formatting fights, no
+  layout that shifts between machines. Point at anything, say what you want in plain words, and
+  apply it to one element or every similar one across the whole batch. Anything Typst can draw,
+  the assistant can build.
+- **Nothing gets lost.** Every exported PDF is checked word by word against the original.
+
 ## How it works
 
-```
-             ┌──────────── your machine ─────────────────────────────────────────────┐
-  .docx ──▶  │ pandoc + Lua filter ──▶ content.typ ──┐                               │
-             │                                       ├─ typst ──▶ PDF ──▶ checks ──▶ │ ──▶ export
-             │ design (theme, treatments, overrides) ┘                  ▲            │
-             │      ▲                                                   │            │
-             │      │ proposal          source text vs Typst vs PDF ────┘            │
-             │ ┌────┴──────────────── Bubblewrap sandbox, no network* ─────────┐     │
-             │ │ Claude Code / Codex  ◀── lorem-ipsum twins of the documents   │     │
-             │ └────────────────────────────────────────────────────────────────┘     │
-             └───────────────────────────────────────────────────────────────────────┘
-                                            * except the provider's API, through a proxy
+**1. Your documents stay home, the agent gets a stand-in.**
+
+```mermaid
+flowchart LR
+    W[".docx"] --> C["Content<br/>(fixed)"]
+    C --> T["Lorem-ipsum twin<br/>same layout, fake words"]
+    subgraph SB["Sandbox: sees only twins + design files, network only to the provider API"]
+        A["Claude Code / Codex"]
+    end
+    T --> A
+    A --> D["Design change<br/>(styles only)"]
+    C --> R["Render on your machine"]
+    D --> R
+    R --> P["PDF"]
 ```
 
-- **Content is fixed, design is not.** Each document is converted once into plain Typst markup.
-  Everything visual lives in a separate design layer (theme, reusable *treatments*, per-element
-  *overrides*, custom Typst rules), so the assistant can only change how things look.
-- **Every PDF is checked word by word.** The engine compares the Word source text with the
-  generated Typst and with the text layer of a verification render of the final PDF. A missing or
-  added word fails the document; a failed document cannot be exported.
-- **The assistant works on lorem-ipsum twins.** Before anything reaches the agent, each document
-  is cloned with every word, number and image replaced, keeping structure, styles, tables and
-  lengths. A second check confirms no original word survives. The agent runs in a Bubblewrap
-  sandbox that sees only those twins and the design files.
-- **Proposals, not edits.** Each agent turn becomes a proposal: previewed first on the twins, then
-  rendered with the real documents on your machine, shown side by side with the accepted design,
-  and only then accepted or discarded. Accepted changes stay individually removable.
+**2. Every change is a proposal you can compare, accept or undo.**
+
+```mermaid
+flowchart LR
+    S["Click an element"] --> Q["Ask in chat"]
+    Q --> PR["Proposal rendered<br/>with real content"]
+    PR --> CMP["Side by side<br/>with current design"]
+    CMP -->|accept| ACC["Applied<br/>(removable later)"]
+    CMP -->|discard| Q
+```
+
+**3. No PDF ships with a missing word.**
+
+```mermaid
+flowchart LR
+    SRC["Word text"] --> V{"Same words?"}
+    TYP["Typst text"] --> V
+    PDF["PDF text layer"] --> V
+    V -->|yes| EX["Export"]
+    V -->|no| BL["Blocked"]
+```
+
+In short: content and design are separate layers. Content is converted once and never touched;
+the agent can only change how it looks.
 
 ![Accepted design and proposal side by side](docs/images/compare.png)
 
