@@ -145,7 +145,8 @@ npm run dev                          # builds and starts Electron with the engin
 `LIVERY_HOME` moves the data folder (default `~/.local/share/livery`).
 `LIVERY_ENABLE_FAKE_AGENT=1` adds the deterministic test agent next to Claude Code and Codex.
 `LIVERY_SMOKE=<folder>` with `LIVERY_SMOKE_DOCS=a.docx:b.docx` runs the app's built-in
-end-to-end smoke test and exits (add `LIVERY_SMOKE_AGENT=fake` for the agent loop). The
+end-to-end smoke test and exits (add `LIVERY_SMOKE_AGENT=fake` for the agent loop, and
+`LIVERY_SMOKE_SIZE=1920x1080` to set the screenshot size, whatever your monitor). The
 screenshots in this README come from that run.
 
 ## License
