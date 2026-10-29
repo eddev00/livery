@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from wordeasy.ui.server import COOKIE, create_app
+from livery.ui.server import COOKIE, create_app
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -51,7 +51,7 @@ def test_rejects_foreign_host_and_cross_site_posts(client):
 def test_lists_docs_and_serves_only_registered_files(client, built_features):
     _login(client)
     _, out_dir = built_features
-    from wordeasy.ui.server import Registry
+    from livery.ui.server import Registry
     deep = client.get(f"/api/docs/{Registry.id_for(out_dir)}")  # deep link before any listing
     assert deep.status_code == 200 and deep.json()["name"] == "features"
     docs = client.get("/api/docs").json()
@@ -121,7 +121,7 @@ def test_build_job_and_reverify(client, tmp_path):
     for rel in ("original.pdf", "lorem/lorem.pdf", "lorem/original.pdf"):
         assert client.get(f"/files/{doc_id}/{rel}").headers["content-type"] == "application/pdf", rel
     assert client.get(f"/files/{doc_id}/lorem/lorem.docx").status_code == 404  # the twin's Word file is not served
-    from wordeasy.ui.server import Registry
+    from livery.ui.server import Registry
     assert client.get(f"/api/docs/{Registry.id_for(tmp_path / 'features' / 'lorem')}").status_code == 404  # the twin is not a document of its own
 
     # an unknown variant is refused before anything is rebuilt
@@ -204,7 +204,7 @@ def test_delete_removes_output_folder_only(client, tmp_path):
 
 def test_template_editor_reads_validates_and_writes(client, tmp_path, monkeypatch):
     import shutil
-    from wordeasy.ui import server as srv
+    from livery.ui import server as srv
     tdir = tmp_path / "template"
     shutil.copytree(ROOT / "template", tdir)
     monkeypatch.setattr(srv, "TEMPLATE_DIR", tdir)
@@ -241,8 +241,8 @@ def test_edge_case_forwarding(built_features, tmp_path):
     """The Lorem tab's "Add to edge cases": one twin file plus a note, committed alone, pushed on request."""
     import subprocess
 
-    from wordeasy.edge_cases import is_twin_docx
-    from wordeasy.ui.server import Registry
+    from livery.edge_cases import is_twin_docx
+    from livery.ui.server import Registry
 
     def git(repo, *a):
         return subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True, check=True).stdout

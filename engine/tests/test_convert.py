@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from wordeasy.convert import _lists_on_own_line, _stretch_table_columns
+from livery.convert import _lists_on_own_line, _stretch_table_columns
 
 
 def test_list_after_bracket_moves_to_own_line(tmp_path):

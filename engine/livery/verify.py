@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import difflib
+import html
 import re
 from collections import Counter
 from dataclasses import dataclass, field
@@ -211,15 +212,14 @@ def check_pdf_text(source_text: str, pdf: Path) -> CheckResult:
             return CheckResult("text_in_pdf", PASS,
                                f"all {len(src)} tokens present in PDF (order differs only where PDF reading order differs, e.g. tables)",
                                data={"tokens": len(src), "reordered": True})
-        details = []
-        if r["glued"]:
-            details.append("words glued together in the PDF text layer, usually text overflowing a narrow table cell "
-                           "(check these cells visually): " + _fmt(r["glued"]))
-        if r["split"]:
-            details.append("words broken at a line end: " + _fmt(r["split"]))
-        return CheckResult("text_in_pdf", WARN,
-                           f"all words present; {len(r['glued'])} glued and {len(r['split'])} split by line breaks in the PDF text layer",
-                           details=details, data={"tokens": len(src), "glued": r["glued"][:200], "split": r["split"][:200]})
+        # Every word is there; the text layer only glued neighbours or split a word at a line
+        # break. Text running past a cell edge is a layout problem, reported by text_in_styled_pdf.
+        rejoined = len(r["glued"]) + len(r["split"])
+        return CheckResult("text_in_pdf", PASS,
+                           f"all {len(src)} tokens present in PDF ({rejoined} rejoined across line breaks or cells)",
+                           details=(["glued in the text layer: " + _fmt(r["glued"])] if r["glued"] else [])
+                           + (["split at a line end: " + _fmt(r["split"])] if r["split"] else []),
+                           data={"tokens": len(src), "glued": r["glued"][:200], "split": r["split"][:200]})
     # Word-level (punctuation stripped) comparison decides FAIL vs WARN.
     src_w = word_tokens(source_text, join_hyphens=True)
     out_w = word_tokens(text, join_hyphens=True)
@@ -283,12 +283,53 @@ def check_pdf_superset(source_text: str, pdf: Path) -> CheckResult:
                            f"{len(absent)} source word(s) could not be located in the styled PDF text layer "
                            "(hyphenated inside an overflowing cell?); text_in_pdf is authoritative",
                            details=["not located: " + _fmt(absent, 60)], data={"missing": absent[:200]})
-    if r["glued"] or r["missing"]:
-        n = len(r["glued"]) + len(r["missing"])
+    # A "glued" token that is itself a source word is a word rebuilt from hyphenated pieces.
+    glued = [g for g in r["glued"] if g not in set(src)]
+    if glued:
+        # Two words with no gap between them in the styled PDF: a word ran past the edge of its
+        # table cell into the next one (or the spacing is too tight to tell them apart).
+        spots = _spots_of(pdf, glued)
+        pages: dict[str, list[int]] = {}
+        for sp in spots:
+            if sp["page"] not in pages.setdefault(sp["word"], []):
+                pages[sp["word"]].append(sp["page"])
+        details = [f"«{w}» on page {', '.join(map(str, pages[w]))}" if pages.get(w) else f"«{w}»"
+                   for w in glued[:40]]
+        where = sorted({sp["page"] for sp in spots})
         return CheckResult("text_in_styled_pdf", WARN,
-                           f"every word present; {n} glued or split in the PDF text layer (see text_in_pdf)",
-                           data={"glued": r["glued"][:200], "unresolved": r["missing"][:200]})
+                           f"every word present, but {len(glued)} place(s) where text touches the next word, "
+                           "usually a word too long for its table column"
+                           + (f" (page {', '.join(map(str, where[:12]))}{' …' if len(where) > 12 else ''})" if where else ""),
+                           details=details, data={"glued": glued[:200], "pages": where, "spots": spots[:200]})
     return CheckResult("text_in_styled_pdf", PASS, "every source word is present in the styled PDF", data={"words": len(src)})
+
+
+_BBOX_WORD_RE = re.compile(r'<word xMin="([\d.]+)" yMin="([\d.]+)" xMax="([\d.]+)" yMax="([\d.]+)">([^<]*)</word>')
+
+
+def _spots_of(pdf: Path, words: list[str]) -> list[dict[str, Any]]:
+    """Where each (normalized) glued word is: page and box in PDF points from the top left.
+    pdftotext's word boxes split words more finely than its reading-order text, so a glued
+    word may be up to three consecutive boxes."""
+    tools = require_tools("pdftotext")
+    r = run([tools["pdftotext"], "-enc", "UTF-8", "-bbox", pdf, "-"])
+    want = set(words)
+    out: list[dict[str, Any]] = []
+    for page, chunk in enumerate(r.stdout.split("<page ")[1:], start=1):
+        boxes = []
+        for m in _BBOX_WORD_RE.finditer(chunk):
+            x0, y0, x1, y1 = (float(v) for v in m.groups()[:4])
+            boxes += [(t, x0, y0, x1, y1) for t in _chrome_tolerant(html.unescape(m.group(5)))]
+        for i in range(len(boxes)):
+            for n in (1, 2, 3):
+                part = boxes[i:i + n]
+                w = "".join(b[0] for b in part)
+                if len(part) == n and w in want:
+                    x0, y0 = min(b[1] for b in part), min(b[2] for b in part)
+                    x1, y1 = max(b[3] for b in part), max(b[4] for b in part)
+                    out.append({"word": w, "page": page, "x": round(x0, 1), "y": round(y0, 1),
+                                "w": round(x1 - x0, 1), "h": round(y1 - y0, 1)})
+    return out
 
 
 # ------------------------------------------------------ render-level checks

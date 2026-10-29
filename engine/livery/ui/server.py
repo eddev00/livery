@@ -1,4 +1,4 @@
-"""Local web UI for wordeasy.
+"""Local web UI for livery.
 
 Security model (the UI is strictly local):
   * the server binds to 127.0.0.1 only; it is unreachable from the LAN whatever the firewall says
@@ -6,7 +6,7 @@ Security model (the UI is strictly local):
     handed over once through the URL printed at start-up, then lives in an HttpOnly cookie
   * the Host header must be the loopback address the server listens on (blocks DNS rebinding)
   * state-changing requests must come from the page itself (Origin / Sec-Fetch-Site checks)
-  * files are served only from registered wordeasy output folders, by whitelisted extension
+  * files are served only from registered livery output folders, by whitelisted extension
   * no CORS, no outbound network, no telemetry; the process ends when the terminal or the Quit
     button says so
 """
@@ -41,7 +41,7 @@ from ..tools import REPO_ROOT, TEMPLATE_DIR, tool_versions
 from . import preview
 
 STATIC_DIR = Path(__file__).parent / "static"
-COOKIE = "wordeasy_session"
+COOKIE = "livery_session"
 SERVABLE = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".md", ".json", ".txt", ".log"}
 DOC_EXTS = {".docx", ".docm", ".doc", ".odt", ".rtf"}
 STAGES = ("queued", "converting", "cover", "rendering", "checking", "original", "anonymizing", "reporting", "done", "error")
@@ -49,7 +49,7 @@ STAGES = ("queued", "converting", "cover", "rendering", "checking", "original", 
 
 # ------------------------------------------------------------------ registry of output folders
 class Registry:
-    """Maps short ids to wordeasy output folders. Only registered folders are ever served."""
+    """Maps short ids to livery output folders. Only registered folders are ever served."""
 
     def __init__(self, out_root: Path):
         self.out_root = out_root
@@ -182,7 +182,7 @@ class Runner:
         self.jobs: dict[str, Job] = {}
         self._queue: list[Job] = []
         self._cv = threading.Condition()
-        self._thread = threading.Thread(target=self._loop, name="wordeasy-runner", daemon=True)
+        self._thread = threading.Thread(target=self._loop, name="livery-runner", daemon=True)
         self._thread.start()
 
     def submit(self, job: Job) -> Job:
@@ -244,21 +244,21 @@ class LocalOnly(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         host = request.headers.get("host", "")
         if host not in self.hosts:
-            return PlainTextResponse("wordeasy: unexpected Host header", status_code=421)
+            return PlainTextResponse("livery: unexpected Host header", status_code=421)
         if request.url.path == "/" and request.query_params.get("token"):
             if hmac.compare_digest(request.query_params["token"], self.token):
                 resp = RedirectResponse("/", status_code=303)
                 resp.set_cookie(COOKIE, self.token, httponly=True, samesite="strict", path="/")
                 return resp
-            return PlainTextResponse("wordeasy: invalid token", status_code=403)
+            return PlainTextResponse("livery: invalid token", status_code=403)
         cookie = request.cookies.get(COOKIE, "")
         if not hmac.compare_digest(cookie, self.token):
-            return PlainTextResponse("wordeasy: not signed in. Open the URL printed in the terminal.", status_code=403)
+            return PlainTextResponse("livery: not signed in. Open the URL printed in the terminal.", status_code=403)
         if request.method not in ("GET", "HEAD"):
             origin = request.headers.get("origin")
             site = request.headers.get("sec-fetch-site")
             if (origin is not None and origin not in self.origins) or (site not in (None, "same-origin", "none")):
-                return PlainTextResponse("wordeasy: cross-site request refused", status_code=403)
+                return PlainTextResponse("livery: cross-site request refused", status_code=403)
         resp = await call_next(request)
         resp.headers["Content-Security-Policy"] = ("default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
                                                    "frame-src 'self'; object-src 'self'; base-uri 'none'; form-action 'self'")
@@ -272,7 +272,7 @@ class LocalOnly(BaseHTTPMiddleware):
 
 # ------------------------------------------------------------------ app
 def create_app(*, token: str, out_root: Path, hosts: set[str], edge_cases_dir: Path | None = None, push: bool = False) -> FastAPI:
-    app = FastAPI(title="wordeasy", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="livery", docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(LocalOnly, token=token, hosts=hosts)
     registry = Registry(out_root)
     runner = Runner(registry)
@@ -615,8 +615,8 @@ def serve(*, out_root: Path, port: int = 0, open_browser: bool = True, edge_case
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", access_log=False)
     server = uvicorn.Server(config)
     app.state.server = server
-    print(f"wordeasy UI listening on 127.0.0.1:{port} (loopback only)\nopen: {url}\nCtrl-C or the Quit button stops it.", flush=True)
-    if open_browser and not os.environ.get("WORDEASY_NO_BROWSER"):
+    print(f"livery UI listening on 127.0.0.1:{port} (loopback only)\nopen: {url}\nCtrl-C or the Quit button stops it.", flush=True)
+    if open_browser and not os.environ.get("LIVERY_NO_BROWSER"):
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     server.run()
     return 0

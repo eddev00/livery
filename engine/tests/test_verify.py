@@ -2,8 +2,8 @@ import json
 import shutil
 from pathlib import Path
 
-from wordeasy import verify as V
-from wordeasy.cli import main
+from livery import verify as V
+from livery.cli import main
 
 
 def _report(out_dir: Path) -> dict:

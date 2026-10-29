@@ -1,5 +1,5 @@
 """Word alignment behind the side-by-side viewer: the same document rendered twice, mapped word to word."""
-from wordeasy.ui.preview import align_tokens
+from livery.ui.preview import align_tokens
 
 
 def test_identical_sequences_map_one_to_one():

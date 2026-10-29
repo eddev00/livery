@@ -7,9 +7,9 @@ never inside this repository, on the agent's machine or under the agent's user.
 ```
 agent side (this repo, Claude Code / Codex allowed)      live side (no agent installed)
 ──────────────────────────────────────────────────       ───────────────────────────────────
-wordeasy/  template/  tests/fixtures/edge-cases/*.docx   ~/wordeasy-live/repo/   (git pull only)
-                       ▲                                  ~/wordeasy-live/in/     (Word files)
-                       │ one human copy step              ~/wordeasy-live/out/    (build output)
+livery/  template/  tests/fixtures/edge-cases/*.docx   ~/livery-live/repo/   (git pull only)
+                       ▲                                  ~/livery-live/in/     (Word files)
+                       │ one human copy step              ~/livery-live/out/    (build output)
                        └───────── lorem.docx ─────────────┘
 ```
 
@@ -18,21 +18,21 @@ wordeasy/  template/  tests/fixtures/edge-cases/*.docx   ~/wordeasy-live/repo/  
 A separate OS user or a separate machine. No Claude Code, Codex, or browser AI on it.
 
 ```
-sudo useradd -m wordeasy-live                # or use another machine
-sudo -iu wordeasy-live
-git clone <repo-url> ~/wordeasy-live/repo    # pull only, never edit here
-mkdir -p ~/wordeasy-live/in ~/wordeasy-live/out
-cd ~/wordeasy-live/repo && uv sync
+sudo useradd -m livery-live                # or use another machine
+sudo -iu livery-live
+git clone <repo-url> ~/livery-live/repo    # pull only, never edit here
+mkdir -p ~/livery-live/in ~/livery-live/out
+cd ~/livery-live/repo && uv sync
 ```
 
 Build and browse with the output root outside the checkout:
 
 ```
-uv run wordeasy build ~/wordeasy-live/in/*.docx --out ~/wordeasy-live/out
-uv run wordeasy ui --out ~/wordeasy-live/out
+uv run livery build ~/livery-live/in/*.docx --out ~/livery-live/out
+uv run livery ui --out ~/livery-live/out
 ```
 
-To pick up a fix: `git pull` in `~/wordeasy-live/repo`, then rebuild.
+To pick up a fix: `git pull` in `~/livery-live/repo`, then rebuild.
 
 ## Forwarding an edge case
 
@@ -52,7 +52,7 @@ proposed) and a one-line note on what is wrong. The server then:
    `git push origin HEAD:edge-cases` by hand.
 
 ```
-uv run wordeasy ui --out ~/wordeasy-live/out --push
+uv run livery ui --out ~/livery-live/out --push
 ```
 
 By hand, the same thing is: check the twin reproduces the problem (its own
@@ -74,9 +74,9 @@ gitignored and readable:
 
 ```
 uv run pytest tests/test_edge_cases.py -q                     # builds every twin, fails on any FAIL check
-uv run wordeasy build tests/fixtures/edge-cases/<slug>.docx --out tests/fixtures/_build --no-twins --no-original-pdf --no-prompt
-uv run wordeasy verify tests/fixtures/_build/<slug>           # after editing the template or content.typ
-uv run wordeasy ui --out tests/fixtures/_build                # human side-by-side look (drop --no-original-pdf for that)
+uv run livery build tests/fixtures/edge-cases/<slug>.docx --out tests/fixtures/_build --no-twins --no-original-pdf --no-prompt
+uv run livery verify tests/fixtures/_build/<slug>           # after editing the template or content.typ
+uv run livery ui --out tests/fixtures/_build                # human side-by-side look (drop --no-original-pdf for that)
 ```
 
 `--no-twins` because a twin of a twin is wasted work. Everything under `_build/` is
@@ -92,7 +92,7 @@ synthetic document.
 ## Belt on top of the wall
 
 `.claude/settings.json` (committed) denies the Read, Edit, Write and Bash tools on
-`~/wordeasy-live/` and on `out/`, blocks Read outside the working directory, and
+`~/livery-live/` and on `out/`, blocks Read outside the working directory, and
 turns on the Bash sandbox with those paths unreadable. Codex's default
 workspace-write sandbox confines the filesystem to the checkout on its own. These
 rules limit accidents on a machine where both sides exist; they are not the

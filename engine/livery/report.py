@@ -37,7 +37,7 @@ def write_report(report: dict[str, Any], out_dir: Path) -> tuple[Path, Path]:
 
 
 def render_markdown(r: dict[str, Any]) -> str:
-    lines = [f"# wordeasy report — {Path(r['source']).name}", "",
+    lines = [f"# livery report — {Path(r['source']).name}", "",
              f"**Status: {r['status']}**  ", f"Source: `{r['source']}`  ", f"PDF: `{r['pdf']}`  ",
              f"Generated: {r['generated_at']}", "", "## Checks", "",
              "| Check | Status | Summary |", "|---|---|---|"]
@@ -83,7 +83,7 @@ def render_markdown(r: dict[str, Any]) -> str:
 
 
 def print_summary(reports: list[dict[str, Any]]) -> None:
-    t = Table(title="wordeasy", show_lines=False)
+    t = Table(title="livery", show_lines=False)
     t.add_column("Document")
     t.add_column("Status")
     t.add_column("Checks")

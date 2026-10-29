@@ -104,7 +104,7 @@ def _row_spans(starts: list[list[int]]) -> list[list[list[int]]]:
 
 def _process_table(tbl: ET.Element):
     """Yield {"fills", "valign", "rows"} grids in the order pandoc emits tables
-    after the filter's container-row split (wordeasy.lua rule 12): rows before
+    after the filter's container-row split (livery.lua rule 12): rows before
     the cut, the nested tables of those rows, the hoisted cell's nested tables,
     then the remaining rows as a new table, and so on."""
     fills: list[list[str | None]] = []

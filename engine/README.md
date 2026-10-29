@@ -1,4 +1,4 @@
-# wordeasy
+# livery
 
 Batch-restyle Word documents (`.docx`) through a single Typst template, with
 safeguards that refuse to deliver a PDF whose content differs from the source.
@@ -23,7 +23,7 @@ Per input file you get `out/<name>/`:
 | `media/` | images extracted from the docx |
 | `report.md` / `report.json` | every integrity check with evidence |
 | `source.txt` | the normalized source text the checks compare against |
-| `wordeasy.json` | state needed by `wordeasy verify` |
+| `livery.json` | state needed by `livery verify` |
 
 ## Install
 
@@ -55,24 +55,24 @@ it lets a document file be committed. The full procedure is in
 ## Use
 
 ```
-uv run wordeasy build docs/*.docx                 # one PDF per file under out/
-uv run wordeasy build a.docx --out /some/dir      # elsewhere
-uv run wordeasy build a.docx --theme my-theme.toml
-uv run wordeasy build a.docx --keep-going         # don't stop at the first FAIL
-uv run wordeasy build a.docx --accept-changes     # accept Word tracked changes (see below)
-uv run wordeasy build a.docx --cover large        # cover variant: "small" (default) or "large" red band
-uv run wordeasy build a.docx --department-name "Finance"   # label above the title and name under the symbol (one variable)
-uv run wordeasy build a.docx --no-twins --no-original-pdf  # styled PDF only: skip lorem/ and original.pdf
-uv run wordeasy verify out/a                      # recompile from (edited) .typ and re-check
-uv run wordeasy watch out/a --open                # live preview: PDF recompiles on every save
-uv run wordeasy tools                             # show detected tool versions
+uv run livery build docs/*.docx                 # one PDF per file under out/
+uv run livery build a.docx --out /some/dir      # elsewhere
+uv run livery build a.docx --theme my-theme.toml
+uv run livery build a.docx --keep-going         # don't stop at the first FAIL
+uv run livery build a.docx --accept-changes     # accept Word tracked changes (see below)
+uv run livery build a.docx --cover large        # cover variant: "small" (default) or "large" red band
+uv run livery build a.docx --department-name "Finance"   # label above the title and name under the symbol (one variable)
+uv run livery build a.docx --no-twins --no-original-pdf  # styled PDF only: skip lorem/ and original.pdf
+uv run livery verify out/a                      # recompile from (edited) .typ and re-check
+uv run livery watch out/a --open                # live preview: PDF recompiles on every save
+uv run livery tools                             # show detected tool versions
 ```
 
 ### Local web UI (Anti-Rdiim)
 
 ```
-uv run wordeasy ui                                # opens http://127.0.0.1:<random port>/?token=… in the browser
-uv run wordeasy ui --out /some/dir --no-browser   # browse another output root; print the URL only
+uv run livery ui                                # opens http://127.0.0.1:<random port>/?token=… in the browser
+uv run livery ui --out /some/dir --no-browser   # browse another output root; print the URL only
 ```
 
 The UI is a thin layer over the same `build` and `verify` code: pick Word files
@@ -121,7 +121,7 @@ its `lorem_twin` check. The twin lives in `out/<name>/lorem/`; nothing inside
 that folder names the original (paths are relative, cover fields are
 lorem-ised), so the folder can be shared as is. Word style names and embedded
 fonts are kept, since they are design. Also available from Python as
-`wordeasy.pipeline.anonymize_document(out_dir)`, and skipped with `--no-twins`.
+`livery.pipeline.anonymize_document(out_dir)`, and skipped with `--no-twins`.
 
 It is strictly local:
 
@@ -130,7 +130,7 @@ It is strictly local:
   then kept in an HttpOnly, SameSite=Strict cookie; every request needs it
 - the `Host` header must match the loopback address (blocks DNS rebinding) and
   state-changing requests must originate from the page itself
-- files are served only from registered wordeasy output folders, by extension
+- files are served only from registered livery output folders, by extension
 - no CORS, no outbound network, no telemetry; Ctrl-C or the Quit button ends it.
   The one exception is opt-in: `--push` lets "Add to edge cases" run `git push`
 
@@ -139,9 +139,9 @@ Exit codes: `0` every document PASS/WARN, `1` at least one FAIL, `2` tool or I/O
 ### Editing the Typst by hand
 
 Edit `out/<name>/content.typ` (body) or `out/<name>/main.typ` (cover fields), then
-run `wordeasy verify out/<name>`. It recompiles the PDF and re-runs every check
+run `livery verify out/<name>`. It recompiles the PDF and re-runs every check
 against the original source text, so a change to the words is reported as FAIL on
-purpose while layout edits pass. `wordeasy watch out/<name> --open` gives a live
+purpose while layout edits pass. `livery watch out/<name> --open` gives a live
 preview: the PDF recompiles whenever a `.typ` file or the theme is saved. A folder
 can be moved anywhere; the template import path is fixed up automatically.
 

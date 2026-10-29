@@ -1,4 +1,4 @@
-from wordeasy.normalize import normalize, tokens, word_tokens
+from livery.normalize import normalize, tokens, word_tokens
 
 
 def test_quotes_dashes_ligatures_nbsp():

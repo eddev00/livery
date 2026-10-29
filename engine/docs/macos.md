@@ -32,8 +32,8 @@ brew install --cask libreoffice
 
 ```
 cd ~
-git clone https://github.com/eddev00/word-easy.git
-cd word-easy
+git clone https://github.com/eddev00/anti-rdim.git
+cd anti-rdim/engine
 uv sync
 ```
 
@@ -48,9 +48,9 @@ file or PDF outside `tests/fixtures/`):
 git config core.hooksPath .githooks
 ```
 
-## 4. Let wordeasy find LibreOffice
+## 4. Let livery find LibreOffice
 
-macOS does not put LibreOffice on the PATH. Link it into the folder wordeasy
+macOS does not put LibreOffice on the PATH. Link it into the folder livery
 checks for tools:
 
 ```
@@ -61,7 +61,7 @@ ln -sf /Applications/LibreOffice.app/Contents/MacOS/soffice .tools/bin/soffice
 Check that everything is found:
 
 ```
-uv run wordeasy tools
+uv run livery tools
 ```
 
 Every line should show a version. `soffice` missing means step 4 did not work;
@@ -70,15 +70,15 @@ anything else missing means step 2 did not finish.
 ## 5. Run the server
 
 ```
-mkdir -p ~/wordeasy-live/in ~/wordeasy-live/out
-uv run wordeasy ui --out ~/wordeasy-live/out
+mkdir -p ~/livery-live/in ~/livery-live/out
+uv run livery ui --out ~/livery-live/out
 ```
 
 The browser opens on `http://127.0.0.1:<port>/?token=…`. The server listens on this
 Mac only and stops with Ctrl-C or the Quit button. Put the Word files to convert in
-`~/wordeasy-live/in/` and pick them with "New build"; the files stay where they are.
+`~/livery-live/in/` and pick them with "New build"; the files stay where they are.
 
-Keep the documents in `~/wordeasy-live/`, never inside the `word-easy` folder:
+Keep the documents in `~/livery-live/`, never inside the `anti-rdim` folder:
 that folder is the code, and it is the only thing that may be shared with a coding
 agent. See [live-side.md](live-side.md) for the reasoning and the edge-case flow.
 
@@ -86,13 +86,13 @@ To let the "Add to edge cases" button push its commit to GitHub, start with
 `--push` (needs the `gh auth login` from step 3):
 
 ```
-uv run wordeasy ui --out ~/wordeasy-live/out --push
+uv run livery ui --out ~/livery-live/out --push
 ```
 
 ## 6. Update later
 
 ```
-cd ~/word-easy
+cd ~/anti-rdim/engine
 git pull
 uv sync
 ```
@@ -100,8 +100,8 @@ uv sync
 ## Command line instead of the UI
 
 ```
-uv run wordeasy build ~/wordeasy-live/in/*.docx --out ~/wordeasy-live/out
-open ~/wordeasy-live/out/<name>/<name>.pdf
+uv run livery build ~/livery-live/in/*.docx --out ~/livery-live/out
+open ~/livery-live/out/<name>/<name>.pdf
 ```
 
 ## If something fails

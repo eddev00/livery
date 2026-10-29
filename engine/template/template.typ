@@ -1,4 +1,4 @@
-// wordeasy template — all styling as set/show rules. The content file that is
+// livery template — all styling as set/show rules. The content file that is
 // included by main.typ is plain pandoc-generated Typst and never contains styling.
 //
 // sys.inputs understood:
@@ -97,7 +97,7 @@
       context {
         // No running header on the cover or on chapter separator pages.
         let here-page = counter(page).get().first()
-        let chapter-pages = query(<wordeasy-chapter-page>).map(m => counter(page).at(m.location()).first())
+        let chapter-pages = query(<livery-chapter-page>).map(m => counter(page).at(m.location()).first())
         if here-page > 1 and not chapter-pages.contains(here-page) {
           let hs = t.text.header
           set text(font: t.fonts.heading, size: _len(hs.size), weight: _weight(hs.weight), fill: _color(t, hs.color))
@@ -167,7 +167,7 @@
         margin: (left: 0pt, right: 0pt, top: 0pt, bottom: _len(t.page.margin_bottom)),
         fill: if filled { _color(t, cp.fill) } else { none },
       )[
-        #place(top + left, [#metadata("chapter") <wordeasy-chapter-page>])
+        #place(top + left, [#metadata("chapter") <livery-chapter-page>])
         #if cp.at("background", default: "") != "" {
           context {
             // Aspect ratio is always kept: one dimension comes from the theme, the
@@ -221,7 +221,7 @@
   }
 
   // ------------------------------------------------------------------ tables
-  // Cell colours extracted from the Word file (see wordeasy/table_fills.py):
+  // Cell colours extracted from the Word file (see livery/table_fills.py):
   // fills[table index][row][column] = hex or null. Tables are counted in order.
   let tables-data = if "fills" in sys.inputs { json(sys.inputs.fills) } else { () }
   let default-fill = _color(t, t.tables.default_fill)
@@ -337,7 +337,7 @@
   // Per-table colours: a set rule inside a `show table` rule never restyles that
   // same table, but the table is a child of the figure pandoc wraps it in, so the
   // figure's show rule can apply it. Tables are counted in document order.
-  let table-counter = counter("wordeasy-table")
+  let table-counter = counter("livery-table")
   show figure.where(kind: table): it => {
     table-counter.step()
     context {

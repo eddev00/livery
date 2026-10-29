@@ -1,4 +1,4 @@
-// How wordeasy works — a plain-language overview for non-technical readers.
+// How livery works — a plain-language overview for non-technical readers.
 // Build: typst compile --font-path template/assets/fonts docs/process-overview.typ
 
 #let accent = rgb("#1F4E79")
@@ -11,7 +11,7 @@
 #set page(paper: "a4", margin: (top: 2.2cm, bottom: 2cm, x: 2.2cm),
   footer: context [
     #set text(size: 8.5pt, fill: muted)
-    wordeasy — how a document is styled, twinned and kept away from the AI
+    livery — how a document is styled, twinned and kept away from the AI
     #h(1fr)
     #counter(page).display("1 / 1", both: true)
   ])
@@ -44,7 +44,7 @@
 
 // ---------------------------------------------------------------- title
 #block[
-  #text(size: 9pt, fill: muted, tracking: 0.08em)[WORDEASY · PROCESS OVERVIEW]
+  #text(size: 9pt, fill: muted, tracking: 0.08em)[LIVERY · PROCESS OVERVIEW]
   #v(0.2em)
   #text(size: 24pt, weight: "bold", fill: accent)[How a Word file becomes a styled PDF — safely]
   #v(0.3em)
@@ -53,7 +53,7 @@
 
 = In one paragraph
 
-wordeasy takes a Word document, keeps every word of it, and lays it out again in the
+livery takes a Word document, keeps every word of it, and lays it out again in the
 house template: cover page, table of contents, chapter pages, fonts and colours. It
 never trusts itself: after every build it compares the result with the original,
 word by word, and refuses to deliver a PDF whose content differs. Alongside the real

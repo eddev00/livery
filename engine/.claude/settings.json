@@ -4,17 +4,17 @@
       "Read(out/**)",
       "Edit(out/**)",
       "Write(out/**)",
-      "Read(~/wordeasy-live/**)",
-      "Edit(~/wordeasy-live/**)",
-      "Write(~/wordeasy-live/**)",
-      "Bash(*wordeasy-live*)"
+      "Read(~/livery-live/**)",
+      "Edit(~/livery-live/**)",
+      "Write(~/livery-live/**)",
+      "Bash(*livery-live*)"
     ],
     "blockReadsOutsideWorkingDirectories": true
   },
   "sandbox": {
     "enabled": true,
     "filesystem": {
-      "denyRead": ["~/wordeasy-live", "out"],
+      "denyRead": ["~/livery-live", "out"],
       "allowRead": ["~/.local/share/uv", "~/.cache/uv", "~/.local/share/mise", "~/.local/bin"]
     }
   }

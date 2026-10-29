@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from wordeasy.cli import main
+from livery.cli import main
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -27,7 +27,7 @@ def test_features_build_passes(built_features):
     for name in ("text_after_conversion", "structure_after_conversion", "render", "text_in_pdf",
                  "text_in_styled_pdf", "images", "fonts"):
         assert st[name] == "PASS", (name, rep)
-    for f in ("content.typ", "main.typ", "features.pdf", "source.txt", "report.md", "wordeasy.json"):
+    for f in ("content.typ", "main.typ", "features.pdf", "source.txt", "report.md", "livery.json"):
         assert (out_dir / f).exists(), f
     assert list((out_dir / "media").glob("*.png"))
     # structure captured from the source
@@ -44,7 +44,7 @@ def test_features_build_passes(built_features):
 def test_layout_build_passes(tmp_path):
     rc = main(["build", str(FIXTURES / "layout.docx"), "--out", str(tmp_path)])
     rep = _report(tmp_path / "layout")
-    assert rc == 0 and rep["status"] == "WARN", rep
+    assert rc == 0 and rep["status"] == "PASS", rep
     assert rep["info"]["dropped_headers_footers"]  # Word header/footer text is reported
     typ = (tmp_path / "layout" / "content.typ").read_text(encoding="utf-8")
     assert "rowspan: 2" in typ and "colspan: 3" in typ
@@ -60,7 +60,8 @@ def test_layout_build_passes(tmp_path):
     # Word's own TOC is dropped and reported; the internal link survives as text
     dropped = rep["info"]["dropped_paragraphs"]
     assert len(dropped) == 3 and any("Long table" in d for d in dropped)
-    assert _statuses(rep)["dropped_paragraphs"] == "WARN"
+    # ...and accounted for: both TOC entries name a heading that is still in the document
+    assert _statuses(rep)["dropped_paragraphs"] == "PASS"
     assert "Table of Contents" not in typ and "the long table section" in typ and "#link(<" not in typ
 
 
@@ -93,7 +94,7 @@ def test_theme_change_is_content_neutral(built_features, tmp_path):
 
 
 def test_cli_entrypoint_runs():
-    r = subprocess.run(["uv", "run", "wordeasy", "tools"], cwd=ROOT, capture_output=True, text=True)
+    r = subprocess.run(["uv", "run", "livery", "tools"], cwd=ROOT, capture_output=True, text=True)
     assert r.returncode == 0 and "pandoc" in r.stdout
 
 
@@ -120,3 +121,15 @@ def test_chapter_words_shift_plain_numbers_down(tmp_path):
     """'Section 01. X' declares the chapter; '1. Intro' below it is level 2."""
     rc = main(["build", str(FIXTURES / "layout.docx"), "--out", str(tmp_path)])
     assert rc == 0
+
+
+def test_dropped_toc_entry_without_heading_warns():
+    from livery.convert import DEFAULT_THEME
+    from livery.pipeline import _dropped_check
+    heading = {"t": "Header", "c": [1, ["", [], []], [{"t": "Str", "c": "Overview"}]]}
+    ok = _dropped_check(["[heading 1] Contents", "[toc 1] 1. Overview\t3", "[empty heading 2] "], [heading],
+                        Path(DEFAULT_THEME))
+    assert ok.status == "PASS" and "1 Word TOC entry" in ok.summary
+    bad = _dropped_check(["[toc 1] 2. Appendix\t9", "[Note] kept?"], [heading], Path(DEFAULT_THEME))
+    assert bad.status == "WARN" and "2 not accounted for" in bad.summary
+    assert any("Appendix" in d for d in bad.details)

@@ -8,7 +8,7 @@ survives.
 ## The boundary
 
 - **Real inputs and outputs live outside this repo.** Point the pipeline at an external
-  folder: `wordeasy build <file> --out /path/outside/repo`. Never build real data into
+  folder: `livery build <file> --out /path/outside/repo`. Never build real data into
   the repo's `out/` (that path is deny-listed in `.claude/settings.json`).
 - **Real and twin files share the same names.** In a build, `out/<doc>/source.txt` is the
   REAL extracted text; `out/<doc>/lorem/source.txt` is the twin's. The only thing telling
